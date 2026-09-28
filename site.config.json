@@ -1,0 +1,7 @@
+{
+  "siteOrigin": "http://www.lanbinquan.top",
+  "monitorScript": "https://www.lanbinquan.top/3D/monitor/monitor.js",
+  "monitorEndpoint": "https://www.lanbinquan.top/3D/monitor/api/ingest",
+  "monitorHost": "www.lanbinquan.top",
+  "monitorProject": "3Dpage"
+}

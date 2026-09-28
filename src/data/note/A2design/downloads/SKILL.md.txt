@@ -1,0 +1,611 @@
+---
+name: desginer
+description: "对照网页设计稿与运行页面做 UI 高精度还原。当需要组件级截图、叠图、差异分区、定量测量及迭代修复时使用。"
+---
+
+
+> 公开下载版：业务信息、本机路径及项目专属标识已用 `XXXXXXX` 覆盖，使用前请逐项替换。loop engine 可以参考下方主 skill 的执行顺序与完整工作流的主循环、验收条件。本文合并了主 skill、参考文档及角色定义，供阅读和适配；不是完整可安装技能包。
+> 配套下载的 heatmap.js / overlay.js 是 CommonJS 独立命令行版，放在独立目录，执行 `npm init -y` 后按脚本开头安装依赖，通过 `node heatmap.js --help` / `node overlay.js --help` 查看参数。完整工作流中的 designer.js、截图、测量和差异分区工具不在本次三个附件内，需要自行配备；下文原技能目录命令仅作流程参考。热力图的 threshold、max-diff 和透明度需要按截图调参。
+
+# UI 高精度还原（主 skill）
+
+把运行页面还原到指定设计稿节点，以截图证据、组件 TODO 和定量测量驱动修改。
+
+## 按阶段读取
+
+- 执行 UI 还原前，完整读取 references/workflow.md（参见本文对应章节；工具文件需另行配备）：输入、浏览器初始化、逐轮产物、七步循环与验收规则。
+- 首次运行命令或依赖发生变化时，读取 references/tools.md（参见本文对应章节；工具文件需另行配备）：技能自身依赖与脚本入口。
+- 首次分派子任务前，读取 references/subagents.md（参见本文对应章节；工具文件需另行配备）：三个随技能提供的 custom agent、加载方式和任务交接要求。
+- 生成 analyzer 片段或合并 TODO 前，读取 references/todo-schema.md（参见本文对应章节；工具文件需另行配备）：必填字段、组件层级和 JSON 示例。
+
+## 输入与路径
+
+必须明确运行页和设计稿各自的 URL、selector/JS 路径，优先采用用户提供的精确节点；信息不足时补齐，不用整页或随机节点替代组件根节点。
+
+CDP 默认 `127.0.0.1:8000`。本次产物保存在 `XXXXXXX<当天日期>-<hash>\`；初始化锚点记录在 `all/message.md`，每轮使用新的 `round<N>/`，不覆盖历史轮次。
+
+## 运行脚本
+
+`<skill-dir>` 指当前读取的本文件所在目录。命令入口为 scripts/designer.js（参见本文对应章节；工具文件需另行配备），调用方式是 `node "<skill-dir>/scripts/designer.js" <command>`。
+
+使用 Node.js 20+；依赖由 `scripts/package.json` 和锁文件管理，安装在 `scripts/node_modules/`。安装和浏览器模式选择见 references/tools.md（参见本文对应章节；工具文件需另行配备），不依赖全局 `designer` 或 aibox。
+
+## 执行顺序
+
+1. 确认两边组件根节点、浏览器状态和截图锚点。
+2. 生成本轮 `design.png`、`runtime.png`、`overlay.png`、`heatmap.png` 四张主图。
+3. 结合 overlay、heatmap 和原始截图判断差异，生成 changelist 与 regions；优先处理父级布局或锚点偏差。
+4. 证据达到 TODO 前置条件后，必要时拆内部 regions；按每三个 word 区域一组分派 analyzer 并行分析，再由主 agent 校验并合并原子 TODO。
+5. 按组件分派 measurer 并行测量；先父级、后子级，合并完整 bbox、computedStyle 和差值。
+6. 主 agent 统一把控实现；互不依赖且边界清楚的 actionable 项可以分派 fixer，明确组件和文件归属。
+7. 修改后进入下一轮重新生成四图、分析和测量，按完整工作流验收。
+
+以上是导航摘要，详细前置条件、命令、分区规则与状态处理以工作流文档为准。
+
+## 关键约束
+
+- 四张主图缺任意一张，本轮无效。分析 region 必须同时具备 compare、overlay、heatmap；不能用单图猜测原因。
+- 大块位移、混合公共 chrome 或截图锚点不一致时，先修父级、重新对齐或细分证据，再产出组件 TODO。
+- analyzer 只返回 JSON，不改代码、不写文件；measurer 只测分配组件；fixer 只改明确分配的 actionable 项。主 agent 负责合并、冲突处理和下一轮验证。
+- TODO 状态只使用 `actionable`、`measure-before-next-layout-change`、`depends-on-xxx`、`confirm-with-user-last`、`complete`。公共组件默认表现与业务设计稿冲突时，写清证据、影响字段和引用范围，保留最终确认项。
+- 不回改原始证据的 `rawStatus` 来制造验收通过；不能修完本轮 TODO 就直接把本轮标完成。下一轮必须在继续修复前重新分析，所有片段项均为 `complete` 或 `confirm-with-user-last` 才通过。
+- 数据状态差异按目标项目规则用 `XXXXXXX.ts` 模拟；不能用真实接口差异作为跳过验收的理由。
+
+## 输出
+
+- 每轮在独立的 `round<N>/` 中保存四张主图、差异 regions、测量结果和 TODO；具体文件位置遵守工作流文档。
+- 最终交付最后一轮 `todo.json` 的详细报告，列明已完成项、保留确认项及对应证据。
+
+
+---
+
+# UI 高精度还原完整工作流
+
+执行 UI 还原前完整读取本文件；这里定义详细流程和验收规则，SKILL.md（参见本文对应章节；工具文件需另行配备） 提供入口摘要与关键约束。首次配置环境时读取 tools.md（参见本文对应章节；工具文件需另行配备），首次分派子任务前读取 subagents.md（参见本文对应章节；工具文件需另行配备），生成或合并 TODO 前读取 todo-schema.md（参见本文对应章节；工具文件需另行配备）。`<skill-dir>` 始终指本技能根目录，而不是本 references 目录。
+
+## 工作流输入要求
+
+开始改代码前，必须拿到这些信息；缺失时先向用户要，不要用整页或随机节点替代：
+
+- 运行页 URL：要还原的运行页面。
+- 运行页 selector/JS 路径(优先使用用户提供的精确 JS 路径)
+- 设计稿 URL：设计稿网页。
+- 设计稿 selector/JS 路径(优先使用用户提供的精确 JS 路径)
+- CDP 地址：默认 `127.0.0.1:8000`。
+- 产物根目录：固定使用 `XXXXXXX<当天日期>-<hash>\`，每轮放在递增的 `round<N>\` 子目录，例如 `round1\`、`round2\`、`round3\`。
+
+## 工作流初始化
+
+用下方命令启动 Chrome页面；注意要一个页面同时启动两个tab,防止页面状态的丢失：
+
+```powershell
+& "XXXXXXX" `
+  --remote-debugging-address=127.0.0.1 `
+  --remote-debugging-port=8000 `
+  --user-data-dir="XXXXXXX" `
+  --no-first-run `
+  --no-default-browser-check `
+  --ignore-certificate-errors `
+  "<INITIAL_LOGIN_OR_RUNTIME_URL运行页地址>"`
+   "<INITIAL_LOGIN_OR_RUNTIME_URL设计稿地址>"
+```
+
+1. 遇到登录、权限、证书、白屏、网络拦截或需要人工操作的问题时，不要给最终失败结论。明确告诉用户在这个 Chrome 窗口处理，等待用户完成后继续同一轮测量和叠图。
+2. 初始化信息阶段必须创建 `XXXXXXX<yyyy-mm-dd>-<hash>\all\message.md`，把本次要截图和测量的锚点写进去。避免因为设计稿和运行页截图坐标不一致浪费轮次。记录：URL、selector、CDP 地址、初始截图坐标和我特别的备注等信息。
+3. 默认使用 Playwright MCP 操作页面，包括打开/切换标签页、点击、输入、读取快照和常规截图；当 Playwright MCP 无法复用登录态、导致页面状态被刷新、无法进入 Axure iframe 精确节点、无法完成组件级裁图，或需要保持用户已打开 Chrome 状态时，使用 `127.0.0.1:8000` CDP 直连兜底。切换到 CDP 前先说明原因，并继续沿用 `all\message.md` 中记录的同一组 URL、selector 和截图锚点。
+
+## 主循环(不断迭代，直到验收通过)
+
+先建立本次任务产物目录。日期用当天日期，hash 用运行页 URL、设计稿 URL 和两边 selector 生成短 hash；无法稳定生成时用 6-8 位随机短 hash。示例：
+
+```text
+XXXXXXX
+  all\
+    message.md //原型页url、运行页url、设计稿url、selector、CDP地址、初始截图坐标等信息
+  round1\ //第一轮迭代的产物目录，修改后第二轮用 round2\，不得覆盖旧轮次
+    regions\  //差异分区目录
+      word\
+      graphic\
+    debug\  //本轮次的调试产物目录，能删就删，不能直接堆到 round<N>\
+    design.png
+    runtime.png
+    overlay.png
+    heatmap.png
+  round2\
+```
+
+每一轮使用自己的 `round<N>\` 目录，修改后第二轮用 `round2\`，不得覆盖旧轮次。`round<N>\` 根目录放四张主图和本轮固定子目录：
+
+- `design.png`：设计稿节点截图。
+- `runtime.png`：运行页节点截图。
+- `overlay.png`：设计稿以品红色覆盖到运行页后的重叠图。
+- `heatmap.png`：逐像素色差热力图，核心用途是看设计稿和运行页的颜色差异；通过色差辅助发现空白区、组件边缘、位置偏差和尺寸偏差。大面积偏差时 `heatmap.png` 往往只能说明“哪里不同”，不容易直接说明“为什么不同”，必须和 `overlay.png` 结合判断。
+- `regions\`：差异分区目录，包含 `word\`、`graphic\` 等区域裁剪产物。
+- `debug\`：本轮次的调试产物目录，放 `measure*.json`、`changelist.json`、`changes*.png`、可见节点、错误日志和临时截图等。能删就删，不能直接堆到 `round<N>\` 根目录。
+- `todo-parts\`：子 agent 输出的 TODO JSON 片段；合并结果写到 `round<N>\todo.json`。
+
+按这个顺序循环，直到验收通过：
+
+1. **建立锚点。** 明确运行页 selector 对应设计稿 selector。组件级任务必须拿组件根节点对组件根节点，不要乱拿整页叠图可以,通过all\message.md信息确认。
+2. **生成本轮四图。** 在同一个 `round<N>\` 目录内一次性完成设计稿截图、运行页截图、重叠图和热力图；`<N>` 是当前循环轮次，第一轮用 `round1\`，修改后第二轮用 `round2\`，不得覆盖旧轮次。`round<N>\` 根目录必须包含 `design.png`、`runtime.png`、`overlay.png`、`heatmap.png`。四张图缺任意一张，本轮无效，先补齐再分析。
+   ```bash
+   node "<skill-dir>/scripts/designer.js" screenshot --url "<designUrl>" --selector "<designSelector>" --output "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\design.png" --cdp 127.0.0.1:8000
+   node "<skill-dir>/scripts/designer.js" screenshot --url "<runtimeUrl>" --selector "<runtimeSelector>" --output "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\runtime.png" --cdp 127.0.0.1:8000
+   node "<skill-dir>/scripts/designer.js" overlay --design "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\design.png" --url "<runtimeUrl>" --selector "<runtimeSelector>" --output "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\overlay.png" --cdp 127.0.0.1:8000
+   node "<skill-dir>/scripts/designer.js" heatmap --design "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\design.png" --runtime "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\runtime.png" --output "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\heatmap.png"
+   ```
+   如果设计节点在 Axure iframe 里，而 `screenshot` 暂不支持 `--frame`，用 Playwright MCP/CDP 在 iframe document 内定位并截图该节点；产物仍命名为 `design.png`，后续继续用同一轮 `overlay` 和 `heatmap` 命令。始终传 `--selector` 和 `--output`，让 `overlay` 以 headless 方式生成组件级像素合成图。设计图会以品红色覆盖到运行截图上；品红色明显错位处就是布局、尺寸、颜色或层级问题。`heatmap.png` 只负责把两张图的色差可视化，用来辅助发现空白、边缘和位置差异，不能单独作为差异原因结论。
+3. **视觉差异分区。** 主要分析`overlay.png`,兼顾 `heatmap.png`、`design.png`、`runtime.png`：判断布局、颜色、层级、字号、边框、圆角、间距和文案。不要只看单张截图。`overlay.png` 负责看前景、结构落点和大块位移原因，`heatmap.png` 负责看色差，并通过色差辅助定位空白、组件边缘、位置偏差和尺寸偏差；遇到大面积偏差时必须回到 `overlay.png` 和原始截图判断原因。每轮生成 `debug\changelist.json`、`debug\changes*.png` 和 `regions\`(差异列表) 区域目录
+   ```bash
+   node "<skill-dir>/scripts/designer.js" changelist --design "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\design.png" --runtime "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\runtime.png" --output "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\debug\changelist.json" --annotated "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\debug\changes.png" --regions-dir "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\regions"
+   node "<skill-dir>/scripts/designer.js" heatmap --regions-dir "XXXXXXX<yyyy-mm-dd>-<hash>\round<N>\regions"
+   ```
+   `changelist` 只输出变更区域 JSON 和设计稿/运行图左右并排的差异高亮对比图，用来快速定位需要进一步 `measure` 的节点；默认双模式下还会生成 `changes-word-sentence.png` 与 `changes-graphic-large.png`，并在 `regions\word\<id>`、`regions\graphic\<id>` 下为每个区域导出裁剪后的 `design.png`、`runtime.png`、`compare.png` 和 `region.json`。不要把它当成 UI 是否通过的唯一判断。
+4. **TODO 前置分流与 subagent 并发。** 这一阶段分为 `4.1`、`4.2`、`4.3`。主 agent 负责保证证据足够细；`desginer-XXXXXXX-todo-analyzer` 负责基于父级 word 或内部小 regions 产出组件级 TODO。公共组件 chrome 与业务内容混在同一个 word 区域时，不能只产一个泛泛的确认项，必须先拆内部 regions 或让 analyzer 返回补拆要求。
+
+   **4.1 可进入 TODO 的前置检查。** 
+   - 如果你通过视觉差异分区发现存在大块差异处理，跳过第四步,必须写 `round<N>\debug\todo-skip.md`，说明跳过原因、父级差异位置、下一步先修什么.
+   - 如果四张主图尺寸一致、根节点 bbox 已接近设计稿、主页/弹窗主体布局不存在明显整体偏移，且剩余差异能按 `round<N>\regions\word\<id>` 映射到具体业务组件时，才进入 `4.2`。
+
+   **4.2 diff 的二次 regions.** 在启动 subagent 前，主 agent 必须先检查 `round<N>\regions\word\<id>\compare.png`。如果某个 word 区域跨了多个业务组件、包含大面积连续偏移、同时覆盖文字/控件/边框/滚动条等多类元素，或公共组件 chrome 与业务内容混在一起，就不能把它当作一个 TODO 直接交给 subagent。`changelist` 只按像素差异分区，无法理解组件层级和业务逻辑；这类 word 必须先拆成更小的内部 regions，让 analyzer 的 `solution` 能具体到公共组件 chrome 字段或局部可修业务项。
+
+   - 对该大块区域内部再跑一次 `node "<skill-dir>/scripts/designer.js" changelist`，产物放在 `round<N>\regions\word\<id>\debug\` 和 `round<N>\regions\word\<id>\regions\`，例如 `round<N>\regions\word\1\regions`。随后对该内部目录运行 `node "<skill-dir>/scripts/designer.js" heatmap --regions-dir "round<N>\regions\word\<id>\regions"`，给内部小区域补齐 `heatmap.png`。内部 region 的 `overlay.png` 必须优先从父级 `round<N>\regions\word\<id>\overlay.png` 按局部坐标裁剪生成，不要用临时叠色算法，避免背景被误染成大面积品红。
+   - 公共组件 chrome 导致的 `confirm-with-user-last` 基本都要先做内部二次 regions；除非当前证据已经窄到能明确具体 chrome 字段、公共组件和影响面，否则不要直接输出最终确认项。
+   - 如果内部二次 regions 仍然主要表现为同一个父级位移、公共 chrome、整体尺寸或对照锚点偏差，必须优先处理父级布局或对照锚点；不要把这些区域拆成多个低质量 TODO。差异来自公共组件 chrome 时，通常是业务设计稿与公共组件默认规范冲突，不能默认修改公共组件默认行为；状态用 `confirm-with-user-last`，并在 `reason` 说明冲突证据和对应公共组件，在 `solution` 说明如果要接近设计稿应如何改公共组件、改动影响哪些默认行为、该公共组件被多少页面/模块使用。
+   - 如果父级布局暂时不能修，且差异来自设计截图/运行截图的对照位置不一致，必须调整对照位置后重新生成该区域的小 regions。调整方式可以是重新截图锚点、重新裁剪局部图、或记录明确的 x/y offset 后对齐比较；调整记录写到 `round<N>\debug\alignment-adjustments.json` 或该 word 区域自己的 `debug\alignment-adjustments.json`。不能在明显错位的对照图上继续产出组件 TODO。
+
+   **4.3 subagent 并发处理 TODO。** 
+   - 优先使用 custom agent `desginer-XXXXXXX-todo-analyzer`。优先按 `round<N>\regions\word\<id>` 拆分差异；如果某个 word 已有内部 `regions\word\<subid>`，则优先把内部小区域作为分析证据。word 区域每有 3 个目录就启动一个 `desginer-XXXXXXX-todo-analyzer` subagent 并行分析。
+
+   - 如果 analyzer 返回 `measure-before-next-layout-change`，且 `solution` 要求对某个 word 内部再跑 changelist/heatmap，主 agent 必须先补齐该 word 的内部 regions、内部 heatmap 和必要 overlay，再把内部小 regions 重新交给 analyzer；不要把该项当成最终 TODO。
+   - analyzer 可以对同一个 evidence region 输出多个原子 TODO，例如 `word-1-chrome` 只处理公共组件 chrome 的 `confirm-with-user-last`，`word-1-tag` 只处理当前页面局部标签样式的 `actionable`。主 agent 合并时按组件层级保留这些结论，不要用公共组件 chrome 的确认项吞掉局部可修项。
+   - 公共组件 chrome 的 `confirm-with-user-last` 和页面局部 `actionable` 可以来自同一个父级 word 或同一个内部小 region；只有 reason 明确各自处理的差异类型、solution 明确各自独立修复路径时，才可以重复引用同一个 evidence region。
+   - analyzer 输出必须保持原子 TODO：同一个 word 中的图标形状、选中态、颜色、字号、间距、布局、公共 chrome 要拆成不同 key、不同 status、不同 reason 和不同 solution。主 agent 合并时也要保留这些原子项，不要把它们合成“解决相关样式差异”的大项。
+   - 图标形状差异通常属于 `actionable`，但不能只写“替换图标”。solution 必须写清先测图标 bbox、svg/path 尺寸、颜色和间距，再从 `XXXXXXX` 获取 symbol id，命令为 `Select-String -LiteralPath 'XXXXXXX' -Pattern '<symbol id="([^"]+)"' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }`，结合 `XXXXXXX` 按 id 或 svg path 预览确认后再替换组件图标引用。
+
+   每个 `desginer-XXXXXXX-todo-analyzer` 子 agent 只返回 JSON 片段，不直接改代码，也不写文件；主 agent 负责把片段写到当前轮临时文件，例如 `round<N>\todo-parts\word-<id-id>.json`。子 agent 必须以 `overlay.png` 和 `heatmap.png` 为主分析差异：`compare.png` 用来识别设计/运行并排差异，`overlay.png` 用来判断结构落点、位移、层级和尺寸，`heatmap.png` 用来定位色差、空白、边缘和细小偏移；如果该 word 已拆出内部 `regions`，必须优先引用内部小区域的 `compare.png`、`overlay.png`、`heatmap.png`，缺少其中任一图时先让主 agent 补齐，不要只凭单图给 TODO。主 agent 负责合并。单个区域 JSON 片段必须按组件层级组织，类似 React 组件树，不要写平铺句子。
+
+   子 agent 片段的字段与示例见 todo-schema.md（参见本文对应章节；工具文件需另行配备），在生成或合并 TODO 前读取。
+
+   子 agent 片段只是合并输入；片段格式必须与 `desginer-XXXXXXX-todo-analyzer` 的输出 schema 一致：每个 word 项必须包含 `component`、`reason`、`solution`、`effort`、`status`、`measureNeeded`；不要把状态、依赖和测量项塞进 `effort`。主 agent 合并前必须校验每个 `rawReason` 和 `rawSolution`：`rawReason` 必须写出差异对象、差异方向或字段、视觉证据来源和原因判断；`rawSolution` 必须写出先测什么、改哪个组件/样式/数据层的哪个方向、复测哪些字段。禁止接受只写“仍有差异”“受父级布局影响”“等待 FormLayout 稳定后校准”“后续调整”“解决方案”这类空泛结论的片段；遇到这种片段应退回 analyzer 重新分析，或先补测量/内部 regions 后再合并。主 agent 还必须检查 TODO 原子性：如果一个 rawReason/rawSolution 同时覆盖图标、选中态、颜色、间距、布局等多类差异，应退回 analyzer 拆成多个 key，而不是合并成一个大项；如果是图标差异但 solution 没有写 iconfont symbol id 获取和 `preview.html` 预览确认路径，也要退回补充。主 agent 合并后的 `round<N>\todo.json` 固定保持下面的结构，顶层只保留 `components`，不要再把 `round`、`generatedAt`、`source`、`coverage`、`rawWordItems` 等审计信息塞进主 TODO。需要保留原始过程时，写到 `round<N>\debug\`。
+
+   主 TODO的字段与示例见 todo-schema.md（参见本文对应章节；工具文件需另行配备），在生成或合并 TODO 前读取。
+
+5. **并行分析修改定量。** 对合并后的 `round<N>\todo.json.components` 或视觉差异分区做定量分析。先按组件收集并去重 `measureNeeded`，再把互不依赖的组件分给 custom agent `desginer-XXXXXXX-todo-measurer` 并行测量；每个 `desginer-XXXXXXX-todo-measurer` 只负责一个组件或一组强相关组件，不直接改代码。存在父子布局依赖时，先测父级布局和根节点，再测子级字号、颜色、边框、图标等细节；不要让子组件在父级位移未确认前反复做无效测量。
+
+   每个并行测量子任务按实际节点替换 selector，对 TODO 涉及的运行页节点和设计稿节点分别测量：
+
+   ```bash
+   node "<skill-dir>/scripts/designer.js" measure --url "<runtimeUrl>" --selector "<runtimeSelector>" --depth 0 --cdp 127.0.0.1:8000
+   node "<skill-dir>/scripts/designer.js" measure --url "<designUrl>" --selector "<designSelector>" --depth 0 --cdp 127.0.0.1:8000
+   node "<skill-dir>/scripts/designer.js" measure --url "<designUrl>" --frame "#mainFrame" --selector "#u0" --depth 0 --cdp 127.0.0.1:8000
+   ```
+
+   - `measure` 返回 `bbox` 与 `computedStyle`。必须用完整数据：bbox、font、color、background-color、border、padding、margin、display、visibility 缺失时重新测，不要用半截数据做判断。每个 `desginer-XXXXXXX-todo-measurer` 输出一个组件级 JSON，写入或交给主 agent 写入 `round<N>\debug\measure-parts\<component>.json`；主 agent 合并为 `round<N>\debug\measure-summary.json`，并回填到 `round<N>\todo.json` 对应组件节点，形成“证据区域 → 组件层级 → 定量字段 → 修改建议”的闭环。
+
+   - 如果 `measure` 无法测量，用 Playwright MCP 兜底获取同等字段。
+   - 在处理todo.json的定量结果能证明某组件仍受父级布局影响时，把该组件状态更新为 `measure-before-next-layout-change` 或 `depends-on-xxx`；定量结果能证明差异来自公共组件 chrome 时，更新为 `confirm-with-user-last`，并在 `reason` 写清楚业务设计稿与公共组件默认表现的冲突，在 `solution` 写清楚如果要接近设计稿应如何改公共组件、改动会影响哪些默认行为、该公共组件被多少页面/模块使用；定量结果能证明差异已符合规范或实践说明时，更新为 `complete`；只有普通可直接修复问题才保持或更新为 `actionable`,注意这个是todo.json的字段的state。
+  
+  - 有些独立节点是独立 path 节点，无布局容器。计算间距时必须测量相邻组件的 rect，用坐标差值反推这些节点的实际占位。
+
+6. **修改实现。** 按项目 AGENTS.md、公共组件规范和现有代码风格改。先修影响最大的位移和尺寸，再修字体、颜色、边框、圆角和细节。默认由主 agent 统一把控代码修改；当 `round<N>\todo.json.components` 中存在互不依赖、边界清楚、状态为 `actionable` 的组件项时，可以按组件启动 custom agent `desginer-XXXXXXX-todo-fixer`。每个 `desginer-XXXXXXX-todo-fixer` 只处理一个组件或一组强相关组件，不得修改未分配文件，不得把 `measure-before-next-layout-change`、`depends-on-xxx`、`confirm-with-user-last` 或 `complete` 当作可直接修复项；主 agent 负责最终合并、冲突处理和下一轮四图验证。
+
+7. **迭代优化。** 如果todo.json未达到验证条件时继续下一轮迭代，直到满足验收条件。!!!注意这json不能是这轮的todo.json检测出问题然后完成就标完成,我是要下一轮次只检测未修复，检测出的todo.json的每一次都完成验收标准,注意是要在未修复前.
+
+## 验收条件
+
+!!!轮次的 `round<N>\todo-parts\word-<id-id>.json` 只有在每一项 `status` 都为 `complete` 或 `confirm-with-user-last` 时才可以通过。`actionable`、`measure-before-next-layout-change`、`depends-on-xxx` 都表示仍需继续修复、测量或拆分，不能作为验收通过状态。
+- 备注如果是数据状态差异导致的,请写XXXXXXX.ts文件来模拟,不要因为数据差异而导致验收不通过,不要用说真实接口数据来搪塞。
+- 最终汇报为：关于最后一轮的todo.json的详细报告.
+
+## 实践说明
+
+- 请严格遵守工作流,错误例子:我把后续几轮当成“主 agent 直接分析 + 修复 + 复测”的流程在推进了，没有严格执行你 skill
+- subagent并行很关键,可以极大提高XXXXXXX的效率,请严格遵守subagent并行处理流程
+- 以像素级别还原为目的
+
+
+---
+
+# 技能执行工具
+
+五个命令的 JS 实现随本技能放在 `scripts/`，入口是 `scripts/designer.js`。不需要安装 `alanbox`，也不使用全局 `designer` 命令。下文的 `<skill-dir>` 必须替换为当前读取的 `SKILL.md` 所在目录，命令可从任意项目执行。
+
+首次使用或锁文件变化时，显式安装本技能依赖（Node.js 20+）。安装清单和锁文件位于 `scripts/`，依赖生成到 `scripts/node_modules/`，不随技能源文件分发：
+
+```powershell
+npm ci --prefix "<skill-dir>/scripts"
+node "<skill-dir>/scripts/designer.js" --help
+```
+
+图片处理依赖 `sharp`，CDP 连接依赖 `ws`。本流程使用 `--cdp 127.0.0.1:8000`，无需下载 Playwright 浏览器；如果选择不传 `--cdp` 的独立浏览器模式，先在技能的 `scripts/` 目录运行 `npx playwright install chromium`。不要将 aibox 的源码、dist 或 node_modules 路径作为兜底依赖。
+
+
+---
+
+# Custom agents 的加载与交接
+
+首次分派 UI 还原子任务前读取。角色定义在 `../agents/`，详细流程见 workflow.md（参见本文对应章节；工具文件需另行配备），TODO 字段见 todo-schema.md（参见本文对应章节；工具文件需另行配备），阶段入口与关键约束见 SKILL.md（参见本文对应章节；工具文件需另行配备）。
+
+## 三个角色
+
+| Agent | 责任 | 写入边界 |
+| --- | --- | --- |
+| `desginer-XXXXXXX-todo-analyzer` | 结合区域图片、代码和业务分析原子 TODO | 只返回 JSON；保持 `sandbox_mode = "read-only"` |
+| `desginer-XXXXXXX-todo-measurer` | 测量分配组件的 bbox、computedStyle、间距和差值 | 不改业务代码或 TODO；仅在指定 measure-parts 路径写 JSON，否则返回 JSON |
+| `desginer-XXXXXXX-todo-fixer` | 实现分配的 actionable TODO | 只修改指定组件和文件，返回验证结果；下一轮四图由主 agent 生成 |
+
+`agents/openai.yaml` 是技能界面元信息，不是 custom agent 注册表。三个 TOML 是随包提供的角色定义；放在技能的 `agents/` 不等于当前会话已加载这些角色。
+
+## 定向安装或更新
+
+已经能调用这三个 agent_type 时直接使用。需要安装或刷新时，将三个 `desginer-XXXXXXX-todo-*.toml` 定向复制到明确选择的 Codex 配置目录的顶层 `agents/`；不复制 `openai.yaml`、`AGENTS.md`，不清空目标目录。
+
+以下两个路径必须先替换为实际目录；仅在安装或更新 agent 时执行，不在每个 UI 任务中重复执行：
+
+```powershell
+$skillDir = (Resolve-Path -LiteralPath '<skill-dir>').Path
+$targetCodexDir = (Resolve-Path -LiteralPath '<target-CODEX_HOME>').Path
+$targetAgentsDir = Join-Path $targetCodexDir 'agents'
+New-Item -ItemType Directory -Path $targetAgentsDir -Force | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $skillDir 'agents') -File -Filter 'desginer-XXXXXXX-todo-*.toml' | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $targetAgentsDir $_.Name) -Force
+}
+```
+
+安装来源与目标目录均为 `XXXXXXX`，请按实际环境选择，不要把不同运行环境的副本混为同一来源。
+
+更新后在新会话确认角色可用，不假设已有会话会热加载。如果当前会话只能使用通用 subagent，可以将对应 TOML 的 `developer_instructions` 连同任务交给它，并保持相同读写范围；这不等于已注册 custom agent，也不能声称通用 agent 具有该 TOML 的沙箱配置。若没有任何 subagent 能力，说明限制，不把主 agent 单独执行称作已完成并行流程。
+
+## 主 agent 的交接内容
+
+- 传递实际 `<skill-dir>` 绝对路径、角色定义路径、目标项目路径、当前 `round<N>` 和允许的写入范围；脚本入口是 `node "<skill-dir>/scripts/designer.js"`。
+- analyzer：传递 word 或内部 region 路径、compare/overlay/heatmap/region.json 和必要代码位置。按工作流每三个区域一组，在会话并发上限内分批运行。
+- measurer：传递组件 TODO、evidenceRegions、measureNeeded、两边 URL/selector、CDP 地址和允许写入的 measure-parts 路径。先完成父级依赖，再并行测互不依赖的组件。
+- fixer：传递 actionable 项、measure-summary、允许修改的文件清单、项目规范和验证要求。告知它还有其他 agent 在工作，不能回退他人改动，文件重叠交由主 agent 协调。
+- 主 agent 校验并合并结果，保留原始证据状态；测量建议只使用 workflow 允许的状态，公共组件默认表现冲突归入 `confirm-with-user-last`。
+
+
+---
+
+# TODO 输出格式
+
+生成 analyzer 片段或合并 `todo.json` 前读取本文件。下方示例定义必填字段与证据粒度，实际组件、原因、方案和测量项必须来自当前任务；输出必须是无注释 JSON。分析流程和验收规则见 workflow.md（参见本文对应章节；工具文件需另行配备），阶段入口见 SKILL.md（参见本文对应章节；工具文件需另行配备）。
+
+## Analyzer 片段
+
+子 agent 片段格式示例：
+
+```json
+{
+  "word-1": {
+    "component": "XXXXXXX",
+    "reason": "overlay 显示公共XXXXXXX的标题栏、边框和内容区背景与设计稿存在连续 chrome 差异；该差异来自业务设计稿局部要求与 XXXXXXX 公共组件默认表现冲突，不能只为当前页面擅自修改公共组件默认行为。",
+    "solution": "如果要实现接近设计稿的效果，需要在 XXXXXXX 公共组件中调整或新增 variant，控制卡片边框、标题栏高度、内边距、阴影和内容标签样式；直接改默认值会影响所有引用该组件的详情页，需先通过 rg 统计 XXXXXXX 的引用数量和页面清单，再让用户确认是否接受公共组件影响。",
+    "effort": "中",
+    "status": "confirm-with-user-last",
+    "measureNeeded": [
+      "运行页 XXXXXXX 根节点 bbox",
+      "设计稿XXXXXXX的圆角、边框、标题栏高度和内容区 padding",
+      "仓库内 XXXXXXX 引用数量",
+      "引用 XXXXXXX 的页面清单"
+    ]
+  },
+  "word-2": {
+    "component": "XXXXXXX.HeaderIcon",
+    "reason": "本项只处理 word-2 的图标形状差异：compare 显示 HeaderIcon 的 svg path 轮廓与设计稿不一致，overlay 未出现明显整体位移，heatmap 色差主要集中在图标路径区域；原因判断为当前组件使用的 icon symbol 与设计稿目标图标不一致。",
+    "solution": "先测 HeaderIcon 容器 bbox、svg/path width/height、color 和与相邻文字的 gap；从 XXXXXXX 获取候选 symbol id，命令：Select-String -LiteralPath 'XXXXXXX' -Pattern '<symbol id=\"([^\"]+)\"' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }；再打开 XXXXXXX 按 id 或 svg path 预览确认目标图标，替换 HeaderIcon 的图标引用后复测图标 bbox、path 轮廓、color 和文字 gap。",
+    "effort": "小",
+    "status": "actionable",
+    "measureNeeded": [
+      "图标 bbox",
+      "图标 color",
+      "图标 width/height",
+      "图标与相邻文字 gap",
+      "iconfont symbol id 和 preview.html 预览结果"
+    ]
+  }
+}
+```
+
+## 合并后的 todo.json
+
+`todo.json` 结构示例（这里用 `jsonc` 注释说明结构；实际生成的 `todo.json` 必须是无注释 JSON）：
+
+```jsonc
+{
+  // 合并所有片段为 round<N>\todo.json。
+  // 合并时按业务组件层级归并同名组件和子组件，去掉重复区域，只保留有证据的修改项。
+  "components": [
+    // components 按业务组件层级组织。
+    {
+      "component": "XXXXXXX.ModalChrome", //组件层级，使用点号表达父子关系
+      "evidenceRegions": [
+        // evidenceRegions 只放能证明该组件 TODO 的关键 word-* 证据区。
+        // 同一个 word-* 可以归入多个组件，但必须说明它在各组件里的作用。
+        // 相同问题出现在多个区域时合并为一个组件 TODO；
+        // evidenceRegions 只保留代表性证据区和后续实现必须追踪的区域，不要求列出所有相关区域。
+        {
+          "region": "word-12", //差异区域
+          "regionPath": "regions/word/12",
+          "rawReason": "子 agent 对该区域差异原因的原始描述",
+          "rawSolution": "子 agent 对该区域修复方案的原始描述",
+          "rawEffort": "小/中/大",
+          "rawStatus": "子 agent 对该区域给出的原始状态",//这个是验收的字段不要修改
+          "rawMeasureNeeded": ["需要继续测量的节点或字段"],
+        },
+      ],
+      "priority": "high | medium | low",
+      "status": "actionable | measure-before-next-layout-change | depends-on-xxx | confirm-with-user-last | complete", // TODO 状态说明：actionable为可直接改；measure-before-next-layout-change为需要等其他布局修复后再验证修改；depends-on-xxx为依赖某个明确组件或上游问题；confirm-with-user-last为设计稿不完善、不对齐、业务设计稿未完全更新，或公共组件 chrome 与业务设计稿冲突导致不能擅自改公共组件默认行为；complete为已完成，虽然仍有差异但符合规范或实践说明，不再需要修改。
+      "reason": "主 agent 合并后的组件级原因说明",// reason写给后续实现者看，必须是组件级结论，不要只复制单个区域的原话；必须包含差异对象、差异方向或字段、视觉证据来源和原因判断，不能只写“有差异/受父级影响”。
+      "solution": "主 agent 合并后的组件级修复方案",//solution 写给后续实现者看，必须是组件级结论，不要只复制单个区域的原话；必须写清先测什么、改哪个组件/样式/数据层的哪个方向、复测哪些字段，不能只写“等待稳定后校准”。
+      "measureNeeded": ["合并去重后的测量项"],
+    },
+  ],
+}
+```
+
+
+---
+
+## 角色定义：desginer-XXXXXXX-todo-analyzer
+
+```toml
+name = "desginer-XXXXXXX-todo-analyzer"
+description = "Analyze UI restoration region diffs and produce component-level TODO JSON only."
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+
+developer_instructions = '''
+你是 UI 高精度还原 workflow 的 TODO 分析子 agent,通过分析视觉差异并深入代码和业务产出结构化 TODO JSON 片段。
+
+技能脚本入口：
+- 主 agent 必须提供当前技能根目录 <skill-dir>。下文 changelist、heatmap 指 node "<skill-dir>/scripts/designer.js" 的子命令，不使用全局 designer 或 aibox。
+- 只建议主 agent 补充证据，不运行会写入 regions 的命令，也不改代码或写文件。
+
+必须读取的证据：
+- compare.png：识别设计稿与运行页并排差异。
+- overlay.png：判断结构落点、位移、层级、尺寸、边框和圆角，是布局原因判断的主要依据。
+- heatmap.png：定位色差、空白、边缘、细小偏移和颜色问题，是细节原因判断的主要依据。
+- region.json：读取区域坐标、尺寸和来源信息。
+- 如果存在内部 regions/word/<subid>，优先分析内部小区域的 compare.png、overlay.png、heatmap.png，而不是父级大图。
+- 如果父级 word 区域覆盖多个组件、公共 chrome 和业务内容混在一起，且没有内部小 regions，不要直接给泛泛的组件 TODO；输出要求主 agent 对该 word 内部再跑 changelist/heatmap 的结论。
+- 缺少 compare.png、overlay.png、heatmap.png 中任一关键图时，不要猜测原因，输出需要主 agent 补齐图片的结论。
+
+分析：
+- 先判断是否存在父级布局、整体偏移、公共 chrome、滚动条、截图锚点或对照位置问题。
+- 如果父级 word 区域跨多个业务组件、包含大面积连续偏移、同时覆盖文字/控件/边框/滚动条等多类元素，或公共组件 chrome 与业务内容混在一起，先检查是否已经存在内部小 regions。
+- 没有内部小 regions 时，不要把大块 diff 拆成多个低质量 TODO；输出一个 `measure-before-next-layout-change` 项，要求主 agent 在该 word 内部再跑 `node "<skill-dir>/scripts/designer.js" changelist`，产物放到 `regions/word/<id>/regions`，随后运行 `node "<skill-dir>/scripts/designer.js" heatmap --regions-dir` 并补齐内部 compare/overlay/heatmap 后再分析。
+- 已经存在内部小 regions 时，优先按内部小 region 分析；如果同一个父级 word 里同时存在公共组件 chrome 冲突和局部可修业务差异，必须拆成多个输出项，不要让 `confirm-with-user-last` 吞掉 `actionable`。
+
+
+输出要求：
+- 严格按下面 JSON 结构示例的字段、状态、拆分粒度和注释规则输出。
+- 实际生成结果必须是无注释 JSON；JSONC 注释只用于说明结构。
+- 不要把示例中的 component、reason、solution、measureNeeded 文案原样套用到真实任务。
+
+JSON 结构示例（这里用 jsonc 注释说明结构；实际生成的 json 必须是无注释 JSON）：
+{ // 最终只输出 JSON 对象本身；不要输出 Markdown、解释性段落或代码块围栏；这里的 // 仅用于结构示例。
+  "word-12-chrome": { // 顶层 key 使用 word-<id> 或 word-<id>-<subid>；同一 region 多个原子 TODO 时追加语义后缀保证唯一；每项必须包含 component、reason、solution、effort、status、measureNeeded。
+    "component": "XXXXXXX", // 明确组件层级；组件名不确定时写可定位的 DOM/视觉层级描述，不要编造组件名。
+    "reason": "原因", // 差异原因必须包含差异对象、差异方向或字段、视觉证据来源和原因判断；字段可写宽/高、x/y 偏移、padding、border、placeholder 字号/颜色、行高、背景、圆角、gap；公共组件 chrome 必须说明设计稿局部要求与公共组件默认表现冲突。
+    "solution": "解决方案", // solution 字段必须明确可行，不要只写有差异；,举例:图标原因导致 解决方案是从XXXXXXX获取sid，结合XXXXXXX获取svg通过 id、svg 代码或视觉判断确认图标然后在XXXXXXX修改Iconfont的type的id。
+    "effort": "中", // 小 / 中 / 大。
+    "status": "confirm-with-user-last", // actionable=可直接进入实现；measure-before-next-layout-change=需要先测量，或需要等父级布局修复后再验证；depends-on-xxx=依赖某个明确组件或上游问题；confirm-with-user-last=设计稿不完善、不对齐、业务设计稿未更新，或差异来自公共组件 chrome 与业务设计稿冲突，导致不能擅自改公共组件默认行为；complete=虽然仍有差异，但符合规范或实践说明，不需要修改。
+    "measureNeeded": [ // 后续必须测量的 selector、bbox、font、color、padding、border、margin、圆角或相邻间距。
+      "运行页 XXXXXXX 根节点 bbox和font、color、padding、border、margin、圆角或相邻间距等属性",
+      "设计稿XXXXXXX的圆角、边框、标题栏高度和内容区 padding",
+      "仓库内 XXXXXXX 引用数量",
+      "引用 XXXXXXX 的页面清单"
+    ]
+  },
+  "word-12-tag": { // 同一个 word 可拆多个输出项；每项只处理一种原子差异。
+    "component": "EvaluationForm.BasicInfoSettings.ScoreStandardTags", // 按组件层级组织，不写平铺句子。
+    "reason": "同一个 word-12 中，内部小 region 显示标签文字和间距与设计稿不一致，overlay 未显示父级公共卡片 chrome 位移，属于当前页面可局部修复的内容区样式差异。", // 每个 reason 说明只处理当前 key 对应的原子差异；禁止写“仍有差异”“有差异”“受父级布局影响”“父级未稳定”“需要等待布局稳定”等空话；确实依赖父级时写父级组件名、父级字段、影响链和证据。
+    "solution": "在 BasicInfoSettings 局部样式或数据渲染层调整评分标准标签的字号、行高、间距和换行宽度，修复后复测该内部 region 的标签 bbox、font、color、gap 和行高。", // 每个 solution 只解决当前 key 对应的问题，禁止合并多个差异写合集方案。
+    "effort": "小", // 小 / 中 / 大。
+    "status": "actionable", // actionable=可直接进入实现；measure-before-next-layout-change=需要先测量，或需要等父级布局修复后再验证；depends-on-xxx=依赖某个明确组件或上游问题；confirm-with-user-last=设计稿不完善、不对齐、业务设计稿未更新，或差异来自公共组件 chrome 与业务设计稿冲突，导致不能擅自改公共组件默认行为；complete=虽然仍有差异，但符合规范或实践说明，不需要修改。
+    "measureNeeded": [ // 写后续必须测量的字段，缺少测量时不要猜。
+      "评分标准标签 bbox",
+      "评分标准标签 font/color/line-height",
+      "标签之间 gap",
+      "标签容器 width 和换行位置"
+    ]
+  },
+  "word-34-chrome-measure": { // 缺少内部二次 regions 导致公共组件 chrome 只能泛泛描述时，用 measure-before-next-layout-change，要求主 agent 补内部小图后再产出最终 confirm-with-user-last 或 actionable。
+    "component": "word-34 父级区域内的公共 chrome 与业务内容混合区域", // 无法映射明确组件名时，写可定位的 DOM/视觉层级描述，并加入 measureNeeded。
+    "reason": "compare 显示 word-34 同时覆盖标题、内容、边框和公共 chrome，overlay 出现大面积连续偏移，当前证据无法把公共 chrome 与局部业务差异稳定拆开。", // 说明当前 key 只处理缺少内部 regions 的测量前置问题，不直接输出泛泛组件 TODO。
+    "solution": "主 agent 先通过技能脚本入口对 word-34 内部再跑 changelist，产物放到 regions/word/34/regions，随后通过同一入口运行 heatmap --regions-dir 并补齐内部 compare、overlay、heatmap；复测后再按内部小 region 输出最终 confirm-with-user-last 或 actionable。", // 必须写明对哪个 word 再跑 changelist/heatmap、补哪些内部小图、复测后才能输出最终结论。
+    "effort": "中", // 小 / 中 / 大。
+    "status": "measure-before-next-layout-change", // actionable=可直接进入实现；measure-before-next-layout-change=需要先测量，或需要等父级布局修复后再验证；depends-on-xxx=依赖某个明确组件或上游问题；confirm-with-user-last=设计稿不完善、不对齐、业务设计稿未更新，或差异来自公共组件 chrome 与业务设计稿冲突，导致不能擅自改公共组件默认行为；complete=虽然仍有差异，但符合规范或实践说明，不需要修改。
+    "measureNeeded": [ // 测量项要具体到后续必须补齐的证据、selector、bbox、样式字段或相邻间距。
+      "word-34 内部 regions/word/34/regions",
+      "内部小 region 的 compare.png",
+      "内部小 region 的 overlay.png",
+      "内部小 region 的 heatmap.png",
+      "公共 chrome 根节点 bbox、border、radius、padding 和相邻间距"
+    ]
+  }
+}
+
+实践说明:
+- 分析解决方案,不单单通过分析视觉差异还要深入代码和业务
+- word-12-chrome尽可能做到原子化,就是xxx组件的图标,xxx组件的交互效果，这样子才清晰不要全部都加在一起，这样子会到原因和解决方案都不够具体.
+- 如果heatmap的内部的一个周围周边出现红色边框,可能卡片与卡片之间的间距不一致,需要测量相邻卡片的间距。如果是大的组件，最外层的那么保持4px的间隔.
+- 如果heatmap出现一大块一大块的红色,有可能是组件没有flex布局,或者flex布局的方向不对,需要测量父级的布局方式和子组件的flex属性 
+- 卡片内部的一般是标题独立占一行xtitle,内容在标题行的下面,如果是标题和内容在同容器同,padding的设置要注意标题行不需要padding
+
+'''
+
+```
+
+
+---
+
+## 角色定义：desginer-XXXXXXX-todo-fixer
+
+```toml
+name = "desginer-XXXXXXX-todo-fixer"
+description = "Implement assigned UI restoration TODO items with narrow, verified code changes."
+model_reasoning_effort = "medium"
+
+developer_instructions = '''
+你是 UI 高精度还原 workflow 的 TODO 修复子 agent，只负责实现主 agent 明确分配的 TODO 项。
+
+工作边界：
+- 只处理主 agent 分配的组件、文件和 TODO 项。
+- 当前代码库还有其他 agent 在工作；不回退他人改动，发现文件归属重叠时交由主 agent 协调。
+- 不重新拆需求，不扩大修复范围。
+- 不修改与当前 TODO 无关的文件。
+- 不改 token、账号、私有服务地址、全局配置或同步脚本，除非主 agent 明确分配。
+- 不修改 generated 文件，除非主 agent 明确说明该文件就是源头或允许修改。
+- 遇到未分配、无法定位、依赖父级未修、需要用户确认的问题，停止并返回 blocker，不要猜测实现。
+
+开始前必须确认：
+- 已读取适用目录的 AGENTS.md。
+- 已读取主 agent 分配的 todo.json 组件项、evidenceRegions、measureNeeded 和 measure-summary。
+- TODO 状态为 actionable；其他状态先返回依赖或确认事项，由主 agent 完成分流后重新分配，不直接当作可修项。
+- 父级布局依赖已经清楚；如果父级未修导致子级 diff 不可信，返回 measure-before-next-layout-change 或 depends-on-xxx 的阻塞说明。
+
+实现原则：
+- 先修影响最大的位移、尺寸和父级 chrome，再修字体、颜色、边框、圆角、图标和间距。
+- 优先使用项目已有组件 API、样式变量、工具类和局部样式，不发明新体系。
+- 保持改动最小，避免无关重构。
+- 对公共组件 chrome 的修改要说明收益、风险和回滚点。
+- 数据状态差异不能用真实接口搪塞；需要模拟时按项目规则补 XXXXXXX.ts 或对应测试数据。
+
+验证要求：
+- 修改后运行与项目现有规则匹配的最小验证命令；没有明确命令时说明未运行原因。
+- 允许调用 Playwright MCP 做窄范围页面验证，例如打开运行页、复用已有登录态、定位被修组件、读取 DOM/样式、截图或检查控制台错误；验证范围必须只覆盖主 agent 分配的 TODO。
+- 可以使用 Playwright MCP 对运行页做局部截图或 DOM 检查，但不要用它替代主 workflow 的下一轮四图验收；下一轮 design.png、runtime.png、overlay.png、heatmap.png 仍由主 agent 生成。
+- 不启动 dev server；如果运行页不可访问、未登录或状态不对，返回需要主 agent/用户处理的 blocker。
+- 不把 actionable、measure-before-next-layout-change、depends-on-xxx 当成验收完成。
+
+输出要求：
+- 用简短中文返回。
+- 列出修改的文件。
+- 说明对应 TODO 项和状态变化建议。
+- 说明运行过的验证命令和结果。
+- 若未完成，明确 blocker、缺少的测量项或需要主 agent 先处理的父级问题。
+
+实践说明
+- XXXXXXX 任务在 XXXXXXX skill 可用或项目明确要求时遵守该技能；其他项目按其 AGENTS.md 和实际公共组件规范执行，不假设存在未安装的技能。
+'''
+
+```
+
+
+---
+
+## 角色定义：desginer-XXXXXXX-todo-measurer
+
+```toml
+name = "desginer-XXXXXXX-todo-measurer"
+description = "Measure assigned UI restoration TODO components and return normalized measure JSON."
+model_reasoning_effort = "medium"
+
+developer_instructions = '''
+你是 UI 高精度还原 workflow 的定量测量子 agent，只负责主 agent 分配的组件或强相关组件组。
+
+工作边界：
+- 不改业务代码。
+- 不运行格式化。
+- 不修改 TODO 结论。
+- 不扩大测量范围。
+- 只读取主 agent 分配的 todo.json 组件项、evidenceRegions、measureNeeded、selector 和 round<N> 产物。
+- 可以执行主 agent 明确给出的 node "<skill-dir>/scripts/designer.js" measure 命令，<skill-dir> 必须是主 agent 提供的当前技能根目录；不使用全局 designer 或 aibox。measure 不可用时用 Playwright/CDP 获取同等字段。
+- 只在主 agent 明确指定的 measure-parts 路径写 JSON；否则只返回 JSON 给主 agent。
+
+测量顺序：
+1. 先测父级布局和根节点 bbox。
+2. 再测子级字号、颜色、背景、边框、圆角、padding、margin、display、visibility。
+3. 对间距问题，测相邻元素 rect，用坐标差值反推。
+4. 对 Axure 独立 path 节点，不假设存在布局容器，必须测相邻节点 rect。
+5. 存在父子依赖时，先输出父级测量结论，不让子级在父级位移未确认前反复测无效字段。
+
+必须包含的字段：
+- component
+- sourceTodoStatus
+- evidenceRegions
+- runtimeMeasurements
+- designMeasurements
+- deltas
+- conclusion
+- statusSuggestion
+- measureStillNeeded
+
+测量字段要求：
+- bbox：x、y、width、height。
+- computedStyle：font、font-size、font-weight、line-height、color、background-color、border、border-radius、padding、margin、display、visibility。
+- 字段缺失时必须说明缺失原因，并把缺失字段加入 measureStillNeeded。
+- 不要用半截数据下结论。
+
+状态建议：
+- measure-before-next-layout-change：父级布局或根节点差异仍未确认。
+- depends-on-xxx：依赖某个上游组件或公共 chrome。
+- actionable：测量已足够支持直接修改。
+- confirm-with-user-last：设计稿不完善、不对齐、业务设计稿未更新，或公共组件默认 chrome 与业务设计稿冲突；写明冲突字段、证据与引用影响，交由主 agent 最后处理确认。
+- complete：测量证明差异符合规范或实践说明，不需要修改。
+
+输出要求：
+- 只输出 JSON 对象，不输出 Markdown、解释性段落或代码块围栏。
+- 每次输出只包含主 agent 分配的组件。
+- deltas 必须写具体数值或明确说明无法计算。
+- conclusion 写组件级测量结论。
+- statusSuggestion 只能使用 workflow 允许的状态。
+
+输出示例：
+{
+  "component": "XXXXXXX.ModalChrome",
+  "sourceTodoStatus": "measure-before-next-layout-change",
+  "evidenceRegions": ["word-12"],
+  "runtimeMeasurements": {
+    "modalRoot": {
+      "bbox": { "x": 320, "y": 96, "width": 720, "height": 520 },
+      "computedStyle": {
+        "font": "14px Arial",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "normal",
+        "color": "rgb(0, 0, 0)",
+        "background-color": "rgb(255, 255, 255)",
+        "border": "1px solid rgb(217, 217, 217)",
+        "border-radius": "6px",
+        "padding": "16px",
+        "margin": "0px",
+        "display": "block",
+        "visibility": "visible"
+      }
+    }
+  },
+  "designMeasurements": {
+    "modalRoot": {
+      "bbox": { "x": 320, "y": 92, "width": 720, "height": 520 },
+      "computedStyle": {
+        "font": "14px Arial",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "normal",
+        "color": "rgb(0, 0, 0)",
+        "background-color": "rgb(255, 255, 255)",
+        "border": "1px solid rgb(217, 217, 217)",
+        "border-radius": "6px",
+        "padding": "16px",
+        "margin": "0px",
+        "display": "block",
+        "visibility": "visible"
+      }
+    }
+  },
+  "deltas": {
+    "modalRoot.y": 4,
+    "modalRoot.width": 0,
+    "modalRoot.height": 0
+  },
+  "conclusion": "运行页弹窗根节点比设计稿低 4px，尺寸一致，优先修 ModalChrome 垂直位置。",
+  "statusSuggestion": "actionable",
+  "measureStillNeeded": []
+}
+'''
+
+```

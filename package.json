@@ -1,0 +1,37 @@
+{
+  "name": "haoqi-showpage-reconstruction",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@my-page/ai-pet": "file:vendor/my-page-ai-pet-0.1.0.tgz",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "gsap": "^3.15.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.182.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "^5.1.2",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "sharp": "0.35.4",
+    "typescript": "^7.0.2",
+    "unified": "^11.0.5",
+    "vite": "^7.3.0",
+    "yaml": "^2.9.1"
+  }
+}

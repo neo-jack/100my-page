@@ -1,0 +1,111 @@
+name: 3Dpage CI/CD
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 3dpage-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build standalone page
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Check deployment scripts
+        run: |
+          bash -n .github/deploy/deploy.sh
+          bash -n .github/deploy/check-assets.sh
+          node --test .github/deploy/check-assets.test.mjs
+          node --test .github/deploy/deploy.test.mjs
+      - name: Check deployment image
+        run: node --test .github/deploy/check-assets.integration.test.mjs
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Check production boundary
+        run: node --test build/productionBoundary.test.js
+      - name: Check chat stream client
+        run: node --experimental-strip-types --test build/aiChat.test.mjs build/siteCards.test.mjs
+      - name: Build production bundle
+        run: npm run build -- --base=/
+      - name: Verify released assets
+        run: node build/auditAssetRelease.js dist
+      - name: Store build artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: 3dpage-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Publish and deploy only this project
+    needs: build
+    if: vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check server configuration
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          for name in SERVER_HOST SERVER_USER SERVER_PASSWORD; do
+            test -n "${!name}" || { echo "::error::Missing repository secret: $name"; exit 1; }
+          done
+      - uses: actions/download-artifact@v7
+        with:
+          name: 3dpage-dist
+          path: .github/deploy/site
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish image
+        id: image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/my-page"
+          docker build --file .github/deploy/Dockerfile --tag "$image:$GITHUB_SHA" --tag "$image:latest" .github/deploy
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:latest"
+          echo "ref=$image:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Deploy with project-scoped rollback
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_IMAGE: ${{ steps.image.outputs.ref }}
+          DEPLOY_COMPONENT: 3d
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: '22'
+          timeout: 30s
+          command_timeout: 30m
+          envs: GHCR_USER,GHCR_TOKEN,DEPLOY_IMAGE,DEPLOY_COMPONENT
+          script_path: .github/deploy/deploy.sh

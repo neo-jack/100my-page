@@ -1,0 +1,9 @@
+FROM nginx:stable-alpine
+RUN curl --version > /dev/null
+COPY nginx-2d.conf /etc/nginx/conf.d/default.conf
+COPY site/2D/ /usr/share/nginx/html/2D/
+EXPOSE 80
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=6 \
+  CMD wget -q -O /dev/null http://127.0.0.1/2D/ || exit 1
+ENTRYPOINT []
+CMD ["nginx", "-g", "daemon off;"]

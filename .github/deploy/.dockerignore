@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!Dockerfile.2d
+!nginx.conf
+!nginx-2d.conf
+!check-assets.sh
+!site/
+!site/**

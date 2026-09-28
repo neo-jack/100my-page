@@ -1,0 +1,55 @@
+{
+  "A1react": {
+    "kind": "portfolio",
+    "order": 1,
+    "cover": "../../../../public/textures/portfolio/react-core-zh.webp",
+    "balloons": [
+      "react",
+      "javascript",
+      "git"
+    ]
+  },
+  "A2design": {
+    "kind": "portfolio",
+    "order": 2,
+    "cover": "../../../../public/textures/portfolio/design-workflow-zh.webp",
+    "balloons": [
+      "figma",
+      "html",
+      "css"
+    ]
+  },
+  "A3context": {
+    "kind": "portfolio",
+    "order": 3,
+    "cover": "../../../../public/textures/portfolio/context-tool-zh.webp",
+    "balloons": [
+      "javascript",
+      "react",
+      "git"
+    ]
+  },
+  "B1mechanism": {
+    "kind": "engineering",
+    "order": 1
+  },
+  "B2cdn": {
+    "kind": "engineering",
+    "order": 2
+  },
+  "B3seo": {
+    "kind": "engineering",
+    "order": 3
+  },
+  "B4monitor": {
+    "kind": "engineering",
+    "order": 4
+  },
+  "B5cicd": {
+    "kind": "engineering",
+    "order": 5
+  },
+  "C1chat": {
+    "kind": "standalone"
+  }
+}

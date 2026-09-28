@@ -1,0 +1,335 @@
+{
+  "schema": 1,
+  "decode": "sharp ensureAlpha raw sRGB RGBA8",
+  "images": [
+    {
+      "file": "apple-icon.png",
+      "width": 512,
+      "height": 512,
+      "rgbaSha256": "0247c6505d30c514589008e9988d5e129e08628a26d6694c957d6291f535b0d6",
+      "sha256": "1670ae325cd44efa14b6bd87f9c5c611296ed1f2c6540308935553c1e3f4a58d"
+    },
+    {
+      "file": "textures/paper-texture.webp",
+      "width": 1215,
+      "height": 680,
+      "rgbaSha256": "396cf166eff845181bf6e935a45a100c52b35022fd02f2214da6f874de80356c",
+      "sha256": "ef36acb2dbea3c97b3153d48054a872bbeefe3c0bfada3091f300d96a8e6f571"
+    },
+    {
+      "file": "textures/portfolio/button.webp",
+      "width": 1024,
+      "height": 256,
+      "rgbaSha256": "0f123ecf94308a430812bd4f164457b5d6d14dee40781207146e7205dd947470",
+      "sha256": "f1e1f986fbd27eed95cd0b450902fbc8be59e01ef525757fa30afc88daa84f2f"
+    },
+    {
+      "file": "textures/portfolio/context-tool-zh.webp",
+      "width": 1097,
+      "height": 1434,
+      "rgbaSha256": "01835f1a57eba7034c1751759b5b57ac2a7d21ecff4f68c81d1bd98d6b4c1fa1",
+      "sha256": "b6158134680bd03ca6b2eb9c247111733623dd79ee743486f931f94b1b2960f1"
+    },
+    {
+      "file": "textures/portfolio/design-workflow-zh.webp",
+      "width": 1097,
+      "height": 1434,
+      "rgbaSha256": "f0a572d5d4d488646c852b331fb51c71225ea80918fd234f02f2b41cef9b5c2c",
+      "sha256": "4807ac9b5a8aed08cd95ed8e806c5efbd2643a118f105410d3534636a3e6a485"
+    },
+    {
+      "file": "textures/portfolio/react-core-zh.webp",
+      "width": 1098,
+      "height": 1433,
+      "rgbaSha256": "bbbd77c0d744b2e2ec2bcd0c83c3e2658edbe677efbfbd0e52e2be47de198715",
+      "sha256": "8c00186b2b4b2a7759f04a0e2bc4d0a1f002bea702910a73754e0cb6cac01117"
+    },
+    {
+      "file": "textures/entrance/floor_paper.webp",
+      "width": 1024,
+      "height": 512,
+      "rgbaSha256": "a11f958bb2d8bf4dd4357a006fba0c71757d3700a59012c8a2221e534cfd46bd",
+      "sha256": "30475a078779dd255b9befe4de25989ebe3b3b587845d6c85fab97576bd896de"
+    },
+    {
+      "file": "textures/entrance/garden-aloe.webp",
+      "width": 510,
+      "height": 372,
+      "rgbaSha256": "e63e246d19bff09aebedbe35fb42f72f1aa5880ae6aceafec713bbd3e853976e",
+      "sha256": "cb7c73cf846ef6ee400ee37dd9465ec8714f1016dbc171e2eb4d4d1e65b227a8"
+    },
+    {
+      "file": "textures/entrance/garden-cosmos.webp",
+      "width": 320,
+      "height": 559,
+      "rgbaSha256": "eb40737dcaba1a3603f7bfbfe35041418cd6fb4da5468b1dde1c06cbe391820f",
+      "sha256": "27f91f4f94a6e60d7f6d75977acfdde06d5341513d63f0cc2fb84f419873dea9"
+    },
+    {
+      "file": "textures/entrance/garden-daisy.webp",
+      "width": 273,
+      "height": 555,
+      "rgbaSha256": "f8c1da241c5ddfd518b043664b10f00a0fbc3489fc97206e28925485fa399e0e",
+      "sha256": "42ffad84bc7de965ca018be0fe61e69d5202888977eaecbe34e53d92ffa89fe3"
+    },
+    {
+      "file": "textures/entrance/garden-tulip.webp",
+      "width": 279,
+      "height": 550,
+      "rgbaSha256": "f442cbfa10ea5c305bc43ee8a835015823c555723dc2172a13803defd6409f18",
+      "sha256": "c8dbd364d1388d92b8576e76f38cacdc1e419ec86e958aeb61eb1f04e438d9c1"
+    },
+    {
+      "file": "textures/entrance/garden-wood.webp",
+      "width": 1024,
+      "height": 345,
+      "rgbaSha256": "e497b560dd0c45cb6e8274fdda3aacd15e385ab458d16fc678dea90f8ec1dd8b",
+      "sha256": "9c6a20119c9ba57dd40f3891f9c8041b8e8ec9fb499ad4a249c7acdaeaeec8cc"
+    },
+    {
+      "file": "textures/entrance/stone-path.webp",
+      "width": 630,
+      "height": 1620,
+      "rgbaSha256": "6ed1c34fc3b3cefed764088c4618c6630cc34733a960a2c3e38ccb26ffa781b5",
+      "sha256": "92c1720b952a8d883ada13cd969cd41e9452026ffdd457092fa227d536fa451c"
+    },
+    {
+      "file": "textures/entrance/window_sketch.webp",
+      "width": 1024,
+      "height": 1024,
+      "rgbaSha256": "510ed7ce91ca86818636d7b79bd4cd4ccf6d4be344401f31168a92d4d81545e4",
+      "sha256": "a80eaf1616e452ebc987124dceeab1264261bd01fb4de4a75c9f3e118335a6dd"
+    },
+    {
+      "file": "textures/doors/door_back.webp",
+      "width": 332,
+      "height": 848,
+      "rgbaSha256": "2fdcd76233e28e195b6f62660248963ca359de375cd495cc785814fc947d4654",
+      "sha256": "7ed20477ac155be02f552df986ace561a6d762b18417d3c67b4ea8fa57c73d1d"
+    },
+    {
+      "file": "textures/doors/door_left_sketch.webp",
+      "width": 332,
+      "height": 848,
+      "rgbaSha256": "71273f3d667fae0f7131649c1030eaac43d31b4e9b6e9389a32a749701ec9d85",
+      "sha256": "1d3aa3f3a3aa84686708ae53d1cff25cfcd8a7363c846224ddcf8e0e72ca9d2d"
+    },
+    {
+      "file": "textures/doors/door_right_sketch.webp",
+      "width": 332,
+      "height": 848,
+      "rgbaSha256": "2fdcd76233e28e195b6f62660248963ca359de375cd495cc785814fc947d4654",
+      "sha256": "7ed20477ac155be02f552df986ace561a6d762b18417d3c67b4ea8fa57c73d1d"
+    },
+    {
+      "file": "textures/doors/frame_sketch.webp",
+      "width": 718,
+      "height": 877,
+      "rgbaSha256": "a7396771a505d5091aade1a4d5f841dcded49d3d19d92446b0532aca37333f86",
+      "sha256": "c7c1407e27b818298854491ed4ed02616ff303f1a7d5824437a881faea7d5711"
+    },
+    {
+      "file": "textures/doors/handle_left_sketch.webp",
+      "width": 332,
+      "height": 848,
+      "rgbaSha256": "cae29967a1dee451b06bb5c246156e12c26297ade91cf2e6e024319bff3b9127",
+      "sha256": "701fd5d7abe0f60d302279eae45372e8822dbdc625e8a7ad6ff6301e1dc85634"
+    },
+    {
+      "file": "textures/doors/handle_right_sketch.webp",
+      "width": 332,
+      "height": 848,
+      "rgbaSha256": "8a8fb035ba34fade910744ed128464d2b5947d4b765ac3308c326f06af3a3324",
+      "sha256": "1947c9b558c739a239fb3ee48e9ad708202a40f881e73f1a951e981f23d55674"
+    },
+    {
+      "file": "textures/doors/pien_sketch.webp",
+      "width": 44,
+      "height": 391,
+      "rgbaSha256": "eb20405d3fa991f16905130ac1b9d2e4e007455706f78ebd33cd94ec38fd2d53",
+      "sha256": "ae28fb06917d808240456c99197502d7b75b1e2a3bea007bf01444b758efd783"
+    },
+    {
+      "file": "textures/clouds/1131c3eb-dfae-423f-924b-ff39d8ccd6dc.webp",
+      "width": 128,
+      "height": 64,
+      "rgbaSha256": "ca94d056c2aab50e89c459ad56e262203ac1a23aa15947ae85d43881199a6654",
+      "sha256": "8d4a865bcc57600f51967e29a8e2588df52879089bdf0b10afd7c63cc18382f4"
+    },
+    {
+      "file": "textures/clouds/254b8ec8-d6f7-4275-956f-7bab65b2ce2d.webp",
+      "width": 128,
+      "height": 64,
+      "rgbaSha256": "7b67b8bf854d05b6bb19d76daabddfdecca2d1b3caeda285c63d74d4f6c7520c",
+      "sha256": "c0e8d96a0ae1d0b37c2daf6056fe970bb97c681bfef5650bb1ba89d3ab7b7c12"
+    },
+    {
+      "file": "textures/clouds/2cc88dd1-483c-466d-b07e-f8308c61ccbe.webp",
+      "width": 512,
+      "height": 128,
+      "rgbaSha256": "027124e2b7cf107987489d4f8fd957b5902f62c0bc0f116c63a5ac97053ef6c1",
+      "sha256": "2dc1c79b99fa2b92d0b31e09b362fd05c8eb48647d221ab730905f1cbc528eab"
+    },
+    {
+      "file": "textures/clouds/5606fcc0-3252-447d-a58a-7bcbac73229a.webp",
+      "width": 512,
+      "height": 256,
+      "rgbaSha256": "790d5cdf8ff7340f4c98244c639a5c598baf573afba7f0bbc9aab002f83223d8",
+      "sha256": "1692a422d314fbe438d3ddc3bedc342a8be8c9876a0d9c270ef3c2dad9a663e0"
+    },
+    {
+      "file": "textures/clouds/7882dc72-3d01-41fb-ac0e-d07b0184ebc1.webp",
+      "width": 256,
+      "height": 256,
+      "rgbaSha256": "ad36bb9dded58c8b1fc6c52c146f9019ab730526c2173acf74a2ffb6aca500d0",
+      "sha256": "5321b97e03d768b517f3fc067cf7c168414fcf58681ece29f276f427fa0d6f0c"
+    },
+    {
+      "file": "textures/clouds/9b2ca72f-7bd0-473b-ba6e-dd9e0eb79d35.webp",
+      "width": 128,
+      "height": 64,
+      "rgbaSha256": "6825e2f01254d126f9292240ae4150e65e25962b0ef28c7f98a9eccdb3baf2dc",
+      "sha256": "9062374321032ce549d6ae36eba33cd470b17ff50247af83f8f012e1b381746d"
+    },
+    {
+      "file": "textures/clouds/c83293c6-d90c-4a32-8d9d-5ac9af7e2296.webp",
+      "width": 512,
+      "height": 128,
+      "rgbaSha256": "13eec232794aff9dbaeaa96540805f24af50cec7b61503580be524eeb1d3e88b",
+      "sha256": "4123da38938c16b0fce8781a7200f4391d9f16342197719204edc70ef370833e"
+    },
+    {
+      "file": "textures/clouds/f6e358bc-d27c-41dd-95f4-6787a835c41e.webp",
+      "width": 128,
+      "height": 64,
+      "rgbaSha256": "05874b2046913c5f92c62f28dcf31a7ccb317f8b280ac8c4ca0fdff622ed12a6",
+      "sha256": "8ea2a84cc3dcc9a9d71c61dd49bbdae285cd5110fc52c844b63472e9a73833bb"
+    },
+    {
+      "file": "textures/about/csssrednibalon.webp",
+      "width": 848,
+      "height": 1264,
+      "rgbaSha256": "5e4c1e589bebc2a1be15363f586d4353c958e96ff856a27a30ecfd97eeb4c680",
+      "sha256": "a2da54368c39f3e0db74ada8fb397f29912d374f4c86026792f0a4b2f2c84e2d"
+    },
+    {
+      "file": "textures/about/csssrednibalon_painted.webp",
+      "width": 848,
+      "height": 1264,
+      "rgbaSha256": "5982b446ee66efca3647f05043fbc66893921513e1645c597aab47d10836090a",
+      "sha256": "4959acdb06cf8edc0c04f85b0267ad054e1c77c84289dd1c12488772fd84f1dc"
+    },
+    {
+      "file": "textures/about/figmamalybalon.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "f6ceab8b2ce7c382fb28b11e6042e953da8c8343cefa96fcf345f8a0c00d16e0",
+      "sha256": "fc1d266bab4051c98de921c8eb1e057fcf5d16fb84d3015956bef44639967576"
+    },
+    {
+      "file": "textures/about/figmamalybalon_painted.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "735808f0418bde5640b3ceb97dc1326498091d8fe94206640ca53d5ac9b5041d",
+      "sha256": "a1dc098798cb69ffa932e626925aa6f5485975189eb01f4c36e8e1c815222bb9"
+    },
+    {
+      "file": "textures/about/gitmalybalon.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "3f18e04de97b34317e07c206b51f97f7d57c03ebba38f65b54a38db3dda7757d",
+      "sha256": "c06f79ae0d1a7fbc176ce2adddfbcce593987559a2fe84399716211ef63c34d1"
+    },
+    {
+      "file": "textures/about/gitmalybalon_painted.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "6d23b567dc8832669b5779ba62436f1799348f157607100369b17213abc9035c",
+      "sha256": "8c1544cb26fb514f4f4ab9966752c41d85094cf2fb89131fdbaca11a296cf943"
+    },
+    {
+      "file": "textures/about/hanging-board.png",
+      "width": 1536,
+      "height": 1024,
+      "rgbaSha256": "380fc01109e0eb0fed1e691d2525c6d8d68ae9f5cb40916fbb84b82995edaad8",
+      "sha256": "3085bff4a8eb50bac17fd6a1ab1536c05f491553e41df65b547a62725d1f4e3b"
+    },
+    {
+      "file": "textures/about/htmlmalybalon.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "8b1524921b2da6817ec96d00d57ed31117a42c9260aac51cd1cdda684dfe10fa",
+      "sha256": "632ee60928aeb1e91be1c3fbc81864fd7ea1880d90a9070c4ab6a936ae3f8071"
+    },
+    {
+      "file": "textures/about/htmlmalybalon_painted.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "d5296c1e79cad0c318bef42a0d5eab5298ef2400eb21148c8696a223e3572a1d",
+      "sha256": "1b7b14a76745d881baadadb383ec9c1ce0e90e39479eb67e2c4fddbd7d0ee75c"
+    },
+    {
+      "file": "textures/about/JSSREDNIBALON.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "e94768826416ceff80f3dd7738e51f120a4cc81003caa777f039ae2b9b81f794",
+      "sha256": "3e76ebfed411059ebc3a6b94ffbe1defc9ee33cd359a29f3410a8526f305dd6d"
+    },
+    {
+      "file": "textures/about/JSSREDNIBALON_painted.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "b4678b6a783251e77b2db4b987c4e2ccdfd951524c09dd9922caa535c38c78a9",
+      "sha256": "0f7b3b569ed00a38f65841479a736549402e5ddb21b90bcf416695167fd3a8f3"
+    },
+    {
+      "file": "textures/about/reactduzybalon.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "f10ac2045e2908420a35245f1e52d1f9be9c80d98c94af286afdb14e553b9746",
+      "sha256": "57837555f8dd42ff24099aec37c37bf3d27486e5dda87816e49674e4be6d8878"
+    },
+    {
+      "file": "textures/about/reactduzybalon_painted.webp",
+      "width": 1024,
+      "height": 1536,
+      "rgbaSha256": "a75699c99a1666878d3b1c7f1a234355eaffd951f83cd145e5c65bf223f40c86",
+      "sha256": "989020279caf8d18b9b43342e6b17ac3641a371a4f75b7be0ac53f194f17cd5c"
+    },
+    {
+      "file": "textures/entrance/paper-note.png",
+      "width": 1055,
+      "height": 1491,
+      "rgbaSha256": "5a17206daa63ea23777c7bfdeaaff8b4d3d4f7be4e8810c6f5f0c2158e28678a",
+      "sha256": "740092b1e223c611a3b8c474689937625672dae50b3fb6da0b987491de9d4582"
+    },
+    {
+      "file": "textures/entrance/window_glass.webp",
+      "width": 1024,
+      "height": 1024,
+      "rgbaSha256": "370414dd3ee976e4f78578bffa0abcc7ce7bf22340dc651a6b95a932f6639caf",
+      "sha256": "6bce5ddefa8ff3610c9b60b9ad790d85303f0317daeba7908637eed9e88d825c"
+    },
+    {
+      "file": "textures/portfolio/preview-button.webp",
+      "width": 1774,
+      "height": 887,
+      "rgbaSha256": "f02d51080a6c7f78f7295afe47745cd899eabd6b21b98600e76938b5a715e582",
+      "sha256": "54bf6df8f9bebfd5e90bd3fe197d8876c47433aba09a3112142dd493121b194c"
+    },
+    {
+      "file": "textures/entrance/wall-paper.webp",
+      "width": 1254,
+      "height": 1254,
+      "rgbaSha256": "95e0d7677cbd058d2de9ae25fe46a1b8d233f6a46ac9c9aea45b8f8c3bb50adf",
+      "sha256": "525870cca3e0d4a5578595c6aef9b608126de6a37d8b361e5d06f6baaa92bde3"
+    },
+    {
+      "file": "textures/entrance/ground-paper.webp",
+      "width": 1254,
+      "height": 1254,
+      "rgbaSha256": "6bf1054278236270544b2952e62a6cd1f1b9ebd26e991aa57fad9cad1718cb9e",
+      "sha256": "05f17c3edf75f3ee4b4b45aefc53a970cb25262e965e6fcf27ebc16b31352b8d"
+    }
+  ]
+}

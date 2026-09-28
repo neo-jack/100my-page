@@ -1,0 +1,797 @@
+// Public standalone export of desginer overlay. Node.js 20+, CommonJS.
+// In a separate folder: npm init -y; npm install commander@14.0.3 sharp@0.34.5 ws@8.20.0
+// Usage: node overlay.js --help
+// Use --cdp host:port to reuse Chrome; otherwise install playwright@1.59.1 and run npx playwright install chromium.
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// engine/constants.js
+var RELEVANT_PROPS, REQUIRED_MEASURE_PROPS, MEASURE_WAIT_TIMEOUT_MS, MEASURE_RETRY_INTERVAL_MS;
+var init_constants = __esm({
+  "engine/constants.js"() {
+    RELEVANT_PROPS = [
+      "width",
+      "height",
+      "min-width",
+      "min-height",
+      "max-width",
+      "max-height",
+      "padding",
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
+      "margin",
+      "margin-top",
+      "margin-right",
+      "margin-bottom",
+      "margin-left",
+      "border",
+      "border-width",
+      "border-radius",
+      "border-color",
+      "border-style",
+      "font",
+      "font-size",
+      "font-weight",
+      "font-family",
+      "line-height",
+      "letter-spacing",
+      "text-align",
+      "color",
+      "background-color",
+      "background",
+      "gap",
+      "row-gap",
+      "column-gap",
+      "display",
+      "flex-direction",
+      "justify-content",
+      "align-items",
+      "position",
+      "top",
+      "right",
+      "bottom",
+      "left",
+      "opacity",
+      "overflow",
+      "visibility",
+      "z-index",
+      "box-sizing"
+    ];
+    REQUIRED_MEASURE_PROPS = [
+      "font",
+      "color",
+      "background-color",
+      "border",
+      "padding",
+      "margin",
+      "display",
+      "visibility"
+    ];
+    MEASURE_WAIT_TIMEOUT_MS = 5e3;
+    MEASURE_RETRY_INTERVAL_MS = 100;
+  }
+});
+
+// engine/cdp/cdp-client.js
+async function listTargets(host, port) {
+  const res = await fetch(`http://${host}:${port}/json`);
+  if (!res.ok)
+    throw new Error(`CDP target list failed: ${res.status}`);
+  return res.json();
+}
+async function connectToPage(host, port, urlFilter) {
+  const targets = await listTargets(host, port);
+  const pages = targets.filter((t) => t.type === "page");
+  if (pages.length === 0)
+    throw new Error("No page targets found");
+  const target = urlFilter ? pages.find((t) => t.url.includes(urlFilter)) ?? pages[0] : pages[0];
+  const client = await CdpClient.connect(target);
+  return { client, target };
+}
+var import_ws, CdpClient;
+var init_cdp_client = __esm({
+  "engine/cdp/cdp-client.js"() {
+    import_ws = __toESM(require("ws"), 1);
+    CdpClient = class _CdpClient {
+      ws;
+      nextId = 1;
+      pending = /* @__PURE__ */ new Map();
+      ready;
+      constructor(wsUrl) {
+        this.ws = new import_ws.default(wsUrl);
+        this.ready = new Promise((resolve2, reject) => {
+          this.ws.once("open", resolve2);
+          this.ws.once("error", reject);
+        });
+        this.ws.on("message", (data) => {
+          const payload = JSON.parse(data.toString());
+          if (payload.id != null) {
+            const p = this.pending.get(payload.id);
+            if (p) {
+              this.pending.delete(payload.id);
+              if (payload.error) {
+                p.reject(new Error(`CDP: ${payload.error.message}`));
+              } else {
+                p.resolve(payload.result);
+              }
+            }
+          }
+        });
+        this.ws.on("close", () => {
+          for (const p of this.pending.values()) {
+            p.reject(new Error("CDP connection closed"));
+          }
+          this.pending.clear();
+        });
+      }
+      static async connect(target) {
+        const client = new _CdpClient(target.webSocketDebuggerUrl);
+        await client.ready;
+        await client.call("DOM.enable");
+        await client.call("CSS.enable");
+        await client.call("Page.enable");
+        await client.call("Runtime.enable");
+        return client;
+      }
+      async call(method, params, timeout = 3e4) {
+        const id = this.nextId++;
+        return new Promise((resolve2, reject) => {
+          const timer = setTimeout(() => {
+            this.pending.delete(id);
+            reject(new Error(`CDP call '${method}' timed out after ${timeout}ms`));
+          }, timeout);
+          this.pending.set(id, {
+            resolve: (v) => {
+              clearTimeout(timer);
+              resolve2(v);
+            },
+            reject: (e) => {
+              clearTimeout(timer);
+              reject(e);
+            }
+          });
+          this.ws.send(JSON.stringify({ id, method, params }));
+        });
+      }
+      close() {
+        this.ws.close();
+      }
+    };
+  }
+});
+
+// overlay/tint.js
+var tint_exports = {};
+__export(tint_exports, {
+  tintDesignImage: () => tintDesignImage
+});
+async function tintDesignImage(imagePath, mode = "auto") {
+  const { data, info } = await (0, import_sharp.default)(imagePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const pixels = new Uint8Array(data.buffer);
+  const resolvedMode = mode === "auto" ? detectMode(pixels) : mode;
+  if (resolvedMode === "magenta") {
+    return tintMagenta(pixels, info);
+  }
+  if (resolvedMode === "difference") {
+    return (0, import_sharp.default)(imagePath).ensureAlpha().png().toBuffer();
+  }
+  return tintGhost(pixels, info, 0.4);
+}
+function detectMode(pixels) {
+  let brightCount = 0;
+  const sampleSize = Math.min(pixels.length / 4, 1e3);
+  const step = Math.floor(pixels.length / 4 / sampleSize);
+  for (let i = 0; i < sampleSize; i++) {
+    const idx = i * step * 4;
+    const brightness = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+    if (brightness > 220)
+      brightCount++;
+  }
+  return brightCount / sampleSize > 0.5 ? "magenta" : "ghost";
+}
+function tintMagenta(pixels, info) {
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+    const brightness = (r + g + b) / 3;
+    if (brightness > LIGHT_THRESHOLD) {
+      pixels[i + 3] = 0;
+    } else {
+      const darkness = 1 - brightness / 255;
+      pixels[i] = MAGENTA[0];
+      pixels[i + 1] = MAGENTA[1];
+      pixels[i + 2] = MAGENTA[2];
+      pixels[i + 3] = Math.round(darkness * 200);
+    }
+  }
+  return (0, import_sharp.default)(Buffer.from(pixels.buffer), {
+    raw: { width: info.width, height: info.height, channels: 4 }
+  }).png().toBuffer();
+}
+function tintGhost(pixels, info, opacity) {
+  for (let i = 0; i < pixels.length; i += 4) {
+    pixels[i + 3] = Math.round(pixels[i + 3] * opacity);
+  }
+  return (0, import_sharp.default)(Buffer.from(pixels.buffer), {
+    raw: { width: info.width, height: info.height, channels: 4 }
+  }).png().toBuffer();
+}
+var import_sharp, LIGHT_THRESHOLD, MAGENTA;
+var init_tint = __esm({
+  "overlay/tint.js"() {
+    import_sharp = __toESM(require("sharp"), 1);
+    LIGHT_THRESHOLD = 230;
+    MAGENTA = [220, 40, 160];
+  }
+});
+
+// engine/cdp/cdp-engine.js
+var cdp_engine_exports = {};
+__export(cdp_engine_exports, {
+  CdpEngine: () => CdpEngine,
+  buildClip: () => buildClip
+});
+function buildClip(model, viewport, padding = 0) {
+  const q = model.border?.quad ?? model.content.quad;
+  const minX = Math.min(q[0], q[2], q[4], q[6]);
+  const maxX = Math.max(q[0], q[2], q[4], q[6]);
+  const minY = Math.min(q[1], q[3], q[5], q[7]);
+  const maxY = Math.max(q[1], q[3], q[5], q[7]);
+  const x = Math.max(0, minX - padding);
+  const y = Math.max(0, minY - padding);
+  const width = Math.min(viewport.width, maxX + padding) - x;
+  const height = Math.min(viewport.height, maxY + padding) - y;
+  return { x, y, width, height };
+}
+var CdpEngine;
+var init_cdp_engine = __esm({
+  "engine/cdp/cdp-engine.js"() {
+    init_constants();
+    init_cdp_client();
+    CdpEngine = class _CdpEngine {
+      client;
+      pageUrl;
+      constructor(client, pageUrl) {
+        this.client = client;
+        this.pageUrl = pageUrl;
+      }
+      static async create(host, port, urlFilter) {
+        const { client, target } = await connectToPage(host, port, urlFilter);
+        return new _CdpEngine(client, target.url);
+      }
+      async screenshot(options) {
+        if (options?.selector) {
+          const safeSelector = JSON.stringify(options.selector);
+          const { result } = await this.client.call("Runtime.evaluate", {
+            expression: `(() => {
+          const el = document.querySelector(${safeSelector});
+          if (!el) throw new Error('Element not found: ' + ${safeSelector});
+          return JSON.stringify(el.getBoundingClientRect());
+        })()`,
+            returnByValue: true
+          });
+          if (result.subtype === "error") {
+            throw new Error(result.description || `Element not found: ${options.selector}`);
+          }
+          const rect = JSON.parse(result.value);
+          const viewport = await this.getViewport();
+          const clip = {
+            x: Math.max(0, rect.x),
+            y: Math.max(0, rect.y),
+            width: Math.min(viewport.width - rect.x, rect.width),
+            height: Math.min(viewport.height - rect.y, rect.height),
+            scale: 1
+          };
+          const { data: data2 } = await this.client.call("Page.captureScreenshot", {
+            format: "png",
+            clip,
+            fromSurface: true
+          });
+          return Buffer.from(data2, "base64");
+        }
+        const { data } = await this.client.call("Page.captureScreenshot", {
+          format: "png",
+          fromSurface: true
+        });
+        return Buffer.from(data, "base64");
+      }
+      async measure(selector, depth = 1, frameSelector) {
+        const safeSelector = JSON.stringify(selector);
+        const safeFrameSelector = JSON.stringify(frameSelector);
+        const safeProps = JSON.stringify(RELEVANT_PROPS);
+        const safeRequiredProps = JSON.stringify(REQUIRED_MEASURE_PROPS);
+        const safeDepth = Number.isFinite(depth) ? Math.max(0, depth) : 1;
+        const js = `
+      (() => {
+        function toBBox(rect, origin) {
+          const originX = origin ? origin.x : 0;
+          const originY = origin ? origin.y : 0;
+          const originLeft = origin ? origin.left : 0;
+          const originTop = origin ? origin.top : 0;
+          return {
+            x: +(rect.x - originX).toFixed(1),
+            y: +(rect.y - originY).toFixed(1),
+            width: +rect.width.toFixed(1),
+            height: +rect.height.toFixed(1),
+            top: +(rect.top - originTop).toFixed(1),
+            right: +(rect.right - originLeft).toFixed(1),
+            bottom: +(rect.bottom - originTop).toFixed(1),
+            left: +(rect.left - originLeft).toFixed(1),
+          };
+        }
+
+        function isValidBBox(bbox) {
+          return Object.values(bbox).every(Number.isFinite);
+        }
+
+        function collectStyle(win, el) {
+          const cs = win.getComputedStyle(el);
+          const style = {};
+          ${safeProps}.forEach(p => {
+            style[p] = p === 'font' ? cs.font : cs.getPropertyValue(p);
+          });
+          return style;
+        }
+
+        function hasRequiredStyle(style) {
+          return ${safeRequiredProps}.every(p => typeof style[p] === 'string' && style[p] !== '');
+        }
+
+        function collectChildren(parent, parentRect, currentDepth, maxDepth) {
+          if (currentDepth >= maxDepth) return [];
+          const result = [];
+          for (const child of parent.children) {
+            const cr = child.getBoundingClientRect();
+            const node = {
+              tag: child.tagName.toLowerCase(),
+              className: (child.className || '').toString().substring(0, 120),
+              bbox: toBBox(cr, parentRect),
+              text: (child.textContent || '').substring(0, 80).trim() || undefined,
+            };
+            if (currentDepth + 1 < maxDepth && child.children.length > 0) {
+              node.children = collectChildren(child, cr, currentDepth + 1, maxDepth);
+            }
+            result.push(node);
+          }
+          return result;
+        }
+
+        const sel = ${safeSelector};
+        const frameSel = ${safeFrameSelector};
+        let doc = document;
+        let win = window;
+        if (frameSel) {
+          const frame = document.querySelector(frameSel);
+          if (!frame || !frame.contentDocument || !frame.contentWindow) return JSON.stringify(null);
+          doc = frame.contentDocument;
+          win = frame.contentWindow;
+        }
+
+        const el = doc.querySelector(sel);
+        if (!el) return JSON.stringify(null);
+        const r = el.getBoundingClientRect();
+        const bbox = toBBox(r);
+        const style = collectStyle(win, el);
+        if (!isValidBBox(bbox)) return JSON.stringify(null);
+        if (!hasRequiredStyle(style)) return JSON.stringify(null);
+        if (bbox.width <= 0 || bbox.height <= 0 || style.display === 'none' || style.visibility === 'hidden') {
+          return JSON.stringify(null);
+        }
+
+        return JSON.stringify({
+          bbox,
+          computedStyle: style,
+          children: ${safeDepth} > 0 ? collectChildren(el, r, 0, ${safeDepth}) : [],
+        });
+      })()
+    `;
+        const deadline = Date.now() + MEASURE_WAIT_TIMEOUT_MS;
+        let lastError;
+        while (Date.now() <= deadline) {
+          try {
+            const { result, exceptionDetails } = await this.client.call("Runtime.evaluate", {
+              expression: js,
+              returnByValue: true
+            });
+            if (exceptionDetails || result.subtype === "error") {
+              throw new Error(result.description || exceptionDetails?.text || "measure failed");
+            }
+            const parsed = JSON.parse(result.value);
+            if (parsed) {
+              return frameSelector ? { selector, frameSelector, ...parsed } : { selector, ...parsed };
+            }
+            lastError = new Error(frameSelector ? `Element not ready or incomplete: ${selector} in frame ${frameSelector}` : `Element not ready or incomplete: ${selector}`);
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+          }
+          await new Promise((resolve2) => setTimeout(resolve2, MEASURE_RETRY_INTERVAL_MS));
+        }
+        throw lastError ?? new Error("measure failed");
+      }
+      async evaluate(expression) {
+        const { result } = await this.client.call("Runtime.evaluate", {
+          expression,
+          returnByValue: true
+        });
+        return result.value;
+      }
+      async injectOverlay(params) {
+        const { tintDesignImage: tintDesignImage2 } = await Promise.resolve().then(() => (init_tint(), tint_exports));
+        const tintedBuf = await tintDesignImage2(params.designImagePath);
+        const base64 = tintedBuf.toString("base64");
+        const js = `
+      (() => {
+        let overlay = document.getElementById('__design_ruler_overlay__');
+        if (!overlay) {
+          overlay = document.createElement('img');
+          overlay.id = '__design_ruler_overlay__';
+          overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:auto;pointer-events:none;z-index:999999;';
+          document.body.appendChild(overlay);
+        }
+        overlay.src = 'data:image/png;base64,' + ${JSON.stringify(base64)};
+        overlay.style.opacity = String(${Number(params.opacity)});
+        overlay.style.transform = 'translate(' + ${Number(params.offsetX)} + 'px, ' + ${Number(params.offsetY)} + 'px) scale(' + ${Number(params.scale)} + ')';
+        overlay.style.transformOrigin = 'top left';
+        if (${Number(params.scrollY ?? 0)} > 0) {
+          window.scrollTo(0, ${Number(params.scrollY ?? 0)});
+        }
+        return 'overlay injected';
+      })()
+    `;
+        await this.evaluate(js);
+      }
+      async captureOverlay(options) {
+        return this.screenshot(options);
+      }
+      async close() {
+        this.client.close();
+      }
+      async getViewport() {
+        return this.evaluate("JSON.parse(JSON.stringify({ width: window.innerWidth, height: window.innerHeight }))");
+      }
+    };
+  }
+});
+
+// engine/playwright/playwright-engine.js
+var playwright_engine_exports = {};
+__export(playwright_engine_exports, {
+  PlaywrightEngine: () => PlaywrightEngine
+});
+var PlaywrightEngine;
+var init_playwright_engine = __esm({
+  "engine/playwright/playwright-engine.js"() {
+    init_constants();
+    PlaywrightEngine = class _PlaywrightEngine {
+      browser;
+      page;
+      constructor(browser, page) {
+        this.browser = browser;
+        this.page = page;
+      }
+      static async create(url, options = {}) {
+        const { chromium } = await import("playwright");
+        const browser = await chromium.launch({
+          headless: options.headless ?? true
+        });
+        const context = await browser.newContext({
+          viewport: options.viewport ?? { width: 1920, height: 1080 },
+          deviceScaleFactor: options.deviceScaleFactor ?? 1
+        });
+        const page = await context.newPage();
+        await page.goto(url, {
+          waitUntil: options.waitUntil ?? "networkidle",
+          timeout: options.waitTimeout ?? 15e3
+        });
+        return new _PlaywrightEngine(browser, page);
+      }
+      async screenshot(options) {
+        if (options?.selector) {
+          const el = await this.page.waitForSelector(options.selector, {
+            timeout: 5e3,
+            state: "visible"
+          });
+          return el.screenshot({ type: "png" });
+        }
+        return this.page.screenshot({
+          type: "png",
+          fullPage: options?.fullPage ?? false
+        });
+      }
+      async measure(selector, depth = 1, frameSelector) {
+        const maxDepth = Number.isFinite(depth) ? Math.max(0, depth) : 1;
+        const handle = await this.page.waitForFunction(({ sel, frameSel, props, requiredProps, maxDepth: maxDepth2 }) => {
+          function toBBox(rect, origin) {
+            const originX = origin?.x ?? 0;
+            const originY = origin?.y ?? 0;
+            const originLeft = origin?.left ?? 0;
+            const originTop = origin?.top ?? 0;
+            return {
+              x: +(rect.x - originX).toFixed(1),
+              y: +(rect.y - originY).toFixed(1),
+              width: +rect.width.toFixed(1),
+              height: +rect.height.toFixed(1),
+              top: +(rect.top - originTop).toFixed(1),
+              right: +(rect.right - originLeft).toFixed(1),
+              bottom: +(rect.bottom - originTop).toFixed(1),
+              left: +(rect.left - originLeft).toFixed(1)
+            };
+          }
+          function isValidBBox(bbox2) {
+            return Object.values(bbox2).every(Number.isFinite);
+          }
+          function collectStyle(win2, el2) {
+            const cs = win2.getComputedStyle(el2);
+            const style2 = {};
+            props.forEach((p) => {
+              style2[p] = p === "font" ? cs.font : cs.getPropertyValue(p);
+            });
+            return style2;
+          }
+          function hasRequiredStyle(style2) {
+            return requiredProps.every((p) => typeof style2[p] === "string" && style2[p] !== "");
+          }
+          function collectChildren(parent, parentRect, currentDepth, maxDep) {
+            if (currentDepth >= maxDep)
+              return [];
+            const result2 = [];
+            for (const child of parent.children) {
+              const cr = child.getBoundingClientRect();
+              const node = {
+                tag: child.tagName.toLowerCase(),
+                className: (child.className || "").toString().substring(0, 120),
+                bbox: toBBox(cr, parentRect),
+                text: (child.textContent || "").substring(0, 80).trim() || void 0
+              };
+              if (currentDepth + 1 < maxDep && child.children.length > 0) {
+                node.children = collectChildren(child, cr, currentDepth + 1, maxDep);
+              }
+              result2.push(node);
+            }
+            return result2;
+          }
+          let doc = document;
+          let win = window;
+          if (frameSel) {
+            const frame = document.querySelector(frameSel);
+            if (!frame || !frame.contentDocument || !frame.contentWindow)
+              return null;
+            doc = frame.contentDocument;
+            win = frame.contentWindow;
+          }
+          const el = doc.querySelector(sel);
+          if (!el)
+            return null;
+          const r = el.getBoundingClientRect();
+          const bbox = toBBox(r);
+          const style = collectStyle(win, el);
+          if (!isValidBBox(bbox))
+            return null;
+          if (!hasRequiredStyle(style))
+            return null;
+          if (bbox.width <= 0 || bbox.height <= 0 || style.display === "none" || style.visibility === "hidden") {
+            return null;
+          }
+          return {
+            bbox,
+            computedStyle: style,
+            children: maxDepth2 > 0 ? collectChildren(el, r, 0, maxDepth2) : []
+          };
+        }, {
+          sel: selector,
+          frameSel: frameSelector,
+          props: RELEVANT_PROPS,
+          requiredProps: REQUIRED_MEASURE_PROPS,
+          maxDepth
+        }, {
+          timeout: MEASURE_WAIT_TIMEOUT_MS,
+          polling: MEASURE_RETRY_INTERVAL_MS
+        });
+        const result = await handle.jsonValue();
+        return frameSelector ? { selector, frameSelector, ...result } : { selector, ...result };
+      }
+      async evaluate(expression) {
+        return this.page.evaluate(expression);
+      }
+      async injectOverlay(params) {
+        const { tintDesignImage: tintDesignImage2 } = await Promise.resolve().then(() => (init_tint(), tint_exports));
+        const tintedBuf = await tintDesignImage2(params.designImagePath);
+        const base64 = tintedBuf.toString("base64");
+        await this.page.evaluate(({ b64, opacity, offsetX, offsetY, scale, scrollY }) => {
+          let overlay2 = document.getElementById("__design_ruler_overlay__");
+          if (!overlay2) {
+            overlay2 = document.createElement("img");
+            overlay2.id = "__design_ruler_overlay__";
+            overlay2.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:auto;pointer-events:none;z-index:999999;";
+            document.body.appendChild(overlay2);
+          }
+          overlay2.src = `data:image/png;base64,${b64}`;
+          overlay2.style.opacity = String(opacity);
+          overlay2.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+          overlay2.style.transformOrigin = "top left";
+          if (scrollY > 0)
+            window.scrollTo(0, scrollY);
+        }, {
+          b64: base64,
+          opacity: params.opacity,
+          offsetX: params.offsetX,
+          offsetY: params.offsetY,
+          scale: params.scale,
+          scrollY: params.scrollY ?? 0
+        });
+      }
+      async captureOverlay(options) {
+        return this.screenshot(options);
+      }
+      async close() {
+        await this.browser.close();
+      }
+    };
+  }
+});
+
+// overlay-download.js
+var import_commander = require("commander");
+
+// commands/overlay.js
+var import_promises = require("fs/promises");
+var import_path = require("path");
+
+// engine/create-engine.js
+function resolveEngineType(options) {
+  return options.cdp ? "cdp" : "playwright";
+}
+async function createEngine(options) {
+  const type = resolveEngineType(options);
+  if (type === "cdp") {
+    const { CdpEngine: CdpEngine2 } = await Promise.resolve().then(() => (init_cdp_engine(), cdp_engine_exports));
+    const [host, portStr] = options.cdp.split(":");
+    const port = parseInt(portStr, 10);
+    return CdpEngine2.create(host, port, options.url);
+  }
+  const { PlaywrightEngine: PlaywrightEngine2 } = await Promise.resolve().then(() => (init_playwright_engine(), playwright_engine_exports));
+  return PlaywrightEngine2.create(options.url, {
+    headless: options.headless ?? true,
+    viewport: options.viewport
+  });
+}
+
+// engine/selector.js
+function resolveSelector(input) {
+  if (input.startsWith("~")) {
+    const keyword = input.slice(1).trim();
+    return `[class*="${keyword}"]`;
+  }
+  return input;
+}
+
+// commands/overlay.js
+function buildOverlayOptions(raw) {
+  if (!raw.design)
+    throw new Error("--design is required (path to design screenshot)");
+  if (!raw.url)
+    throw new Error("--url is required (target page URL)");
+  return {
+    designImagePath: (0, import_path.resolve)(raw.design),
+    targetUrl: raw.url,
+    cdp: raw.cdp,
+    output: raw.output,
+    selector: raw.selector ? resolveSelector(raw.selector) : void 0,
+    offsetX: raw.offsetX != null ? parseFloat(raw.offsetX) : void 0,
+    offsetY: raw.offsetY != null ? parseFloat(raw.offsetY) : void 0,
+    scale: raw.scale != null ? parseFloat(raw.scale) : void 0,
+    opacity: raw.opacity != null ? parseFloat(raw.opacity) : void 0,
+    fullPage: raw.fullPage ?? false
+  };
+}
+async function captureGhost(opts, params) {
+  const engine = await createEngine({ url: opts.targetUrl, cdp: opts.cdp });
+  try {
+    await engine.injectOverlay({
+      designImagePath: opts.designImagePath,
+      targetUrl: opts.targetUrl,
+      offsetX: params.offsetX,
+      offsetY: params.offsetY,
+      scale: params.scale,
+      opacity: params.opacity
+    });
+    const buf = await engine.captureOverlay({ fullPage: opts.fullPage });
+    const outputPath = opts.output ?? `overlay-${Date.now()}.png`;
+    await (0, import_promises.mkdir)((0, import_path.dirname)((0, import_path.resolve)(outputPath)), { recursive: true }).catch(() => {
+    });
+    await (0, import_promises.writeFile)(outputPath, buf);
+    console.log(JSON.stringify({ output: outputPath, bytes: buf.length }));
+  } finally {
+    await engine.close();
+  }
+}
+async function compositeGhost(opts) {
+  const sharp2 = (await import("sharp")).default;
+  const { tintDesignImage: tintDesignImage2 } = await Promise.resolve().then(() => (init_tint(), tint_exports));
+  const engine = await createEngine({ url: opts.targetUrl, cdp: opts.cdp });
+  let elementBuf;
+  try {
+    elementBuf = await engine.screenshot({ selector: opts.selector, fullPage: opts.fullPage });
+  } finally {
+    await engine.close();
+  }
+  const elementMeta = await sharp2(elementBuf).metadata();
+  const ew = elementMeta.width;
+  const eh = elementMeta.height;
+  const tintedBuf = await tintDesignImage2(opts.designImagePath);
+  const tintedResized = await sharp2(tintedBuf).resize(ew, eh, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).toBuffer();
+  const ghostBuf = await sharp2(elementBuf).composite([{ input: tintedResized, blend: "over" }]).png().toBuffer();
+  const outputPath = opts.output ?? `overlay-${Date.now()}.png`;
+  await (0, import_promises.mkdir)((0, import_path.dirname)((0, import_path.resolve)(outputPath)), { recursive: true }).catch(() => {
+  });
+  await (0, import_promises.writeFile)(outputPath, ghostBuf);
+  console.log(JSON.stringify({ output: outputPath, bytes: ghostBuf.length, selector: opts.selector, elementSize: { width: ew, height: eh } }));
+}
+async function overlay(raw) {
+  const opts = buildOverlayOptions(raw);
+  if (opts.selector) {
+    await compositeGhost(opts);
+    return;
+  }
+  if (opts.offsetX != null || opts.offsetY != null) {
+    await captureGhost(opts, {
+      offsetX: opts.offsetX ?? 0,
+      offsetY: opts.offsetY ?? 0,
+      scale: opts.scale ?? 1,
+      opacity: opts.opacity ?? 1
+    });
+    return;
+  }
+  throw new Error("overlay requires --selector for component comparison, or --offset-x/--offset-y for full-page mode");
+}
+
+// overlay-download.js
+var program = new import_commander.Command();
+var overlayCmd = program.name("overlay.js").description("Generate a magenta design ghost overlay on top of a live page screenshot.").requiredOption("--design <path>", "Path to design screenshot (PNG/JPG)").requiredOption("--url <url>", "Target page URL").option("--selector <selector>", "CSS selector; composite ghost on element, prefix ~ for fuzzy class match").option("--full-page", "Capture full scrollable page").option("--output <path>", "Output file path (default: overlay-<timestamp>.png)").option("--offset-x <px>", "Horizontal offset of design overlay (full-page mode)").option("--offset-y <px>", "Vertical offset of design overlay (full-page mode)").option("--scale <ratio>", "Scale factor for design overlay (1 = 100%)").option("--opacity <0-1>", "Opacity of design overlay").option("--cdp <host:port>", "CDP endpoint").action(overlay);
+overlayCmd.addHelpText("after", `
+Modes:
+  Selector:
+    $ node overlay.js --design design.png --url http://localhost:3000 --selector ".dialog" --output overlay.png
+
+  Direct full-page:
+    $ node overlay.js --design spec.png --url http://localhost:3000 --offset-x 0 --offset-y 0 --output overlay.png
+
+  Without --selector, provide at least --offset-x or --offset-y for direct full-page mode.
+`);
+program.parseAsync().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

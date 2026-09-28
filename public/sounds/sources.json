@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "sounds": [
+    {
+      "file": "sky-wind.mp3",
+      "publish": false,
+      "title": "wind1",
+      "author": "Luke.RUSTLTD",
+      "sourcePage": "https://opengameart.org/content/wind1",
+      "downloadUrl": "https://opengameart.org/sites/default/files/wind1.wav",
+      "license": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sha256": "d542d6266c5902104655a2e79e3ea873325bc18f1333195f86b5b08de76f4398",
+      "processing": "18-29s excerpt; 0.5s equal-power loop crossfade; mono 44.1kHz MP3 128k",
+      "durationSeconds": 10.5
+    },
+    {
+      "file": "paper-pop.mp3",
+      "title": "Balloon Sounds",
+      "author": "Gniffelbaf; edited by AntumDeluge",
+      "sourcePage": "https://opengameart.org/content/balloon-sounds",
+      "downloadUrl": "https://opengameart.org/sites/default/files/balloon_pop.flac",
+      "license": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sha256": "647ef050264911e3b7a21f09df96a5f64624b602238b8dd4fd6c89857d550e0d",
+      "processing": "Balloon pop; mono 44.1kHz MP3 128k",
+      "durationSeconds": 0.5471
+    }
+  ]
+}

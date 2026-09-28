@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/* Tailwind 别名和站点级字体，组件中的 className 通过这些变量复用主题值。 */
+@theme inline {
+  --font-sans: "tiktok", sans-serif;
+  --font-mono: "mono", monospace;
+  --font-display: "tronica-mono", "mono", monospace;
+  --color-l1: var(--label-1);
+  --color-l2: var(--label-2);
+  --color-l3: var(--label-3);
+  --color-l4: var(--label-4);
+  --color-line: var(--line);
+  --color-b1: var(--background-1);
+  --ease-66: cubic-bezier(0.66, 0, 0.34, 1);
+}
+
+@font-face {
+  font-family: "tiktok";
+  src: url("../public/fonts/TikTokSans.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "mono";
+  src: url("../public/fonts/GeistMono[wght].ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "tronica-mono";
+  src: url("../public/fonts/DepartureMono-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: block;
+}
+
+/* 颜色变量定义 */
+:root {
+  --label-rgb: 0, 0, 0;
+  --label-d-rgb: 54, 54, 48;
+  --label-1: rgba(var(--label-rgb), 1);
+  --label-2: rgba(var(--label-d-rgb), 0.62);
+  --label-3: rgba(var(--label-d-rgb), 0.32);
+  --label-4: rgba(var(--label-d-rgb), 0.18);
+  --label-d: var(--label-d-rgb);
+  --line: rgba(var(--label-d-rgb), 0.08);
+  --shell-foreground: var(--label-1);
+  --background-1: #fbfaf4;
+  --background-blue: #b9d9ea;
+  --background-elevated: #efede7;
+  --selection-bg: #c0fe04;
+  --code-comment: rgba(var(--label-d-rgb), 0.45);
+  --code-string: #00784a;
+  --code-number: #8a6a00;
+  --code-keyword: #5e53e3;
+  --code-function: #0077bc;
+  --code-operator: rgba(var(--label-d-rgb), 0.75);
+  font-family: "tiktok", sans-serif;
+  color: var(--label-1);
+  background: var(--background-1);
+  color-scheme: light;
+}
+
+/* 页面滚动由 .site-scroll-root 承担，body 只负责锁定浏览器默认滚动。 */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  overflow-x: hidden;
+  background: var(--background-1);
+}
+
+body,
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--label-3);
+  text-underline-offset: 0.16em;
+}
+
+button {
+  color: inherit;
+  background: none;
+  border: 0;
+}
+
+img {
+  max-width: 100%;
+}
+
+::selection {
+  color: #000;
+  background: var(--selection-bg);
+}

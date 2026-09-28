@@ -1,0 +1,9 @@
+services:
+  page:
+    build:
+      context: .
+      args:
+        VITE_AI_ENDPOINT: ${VITE_AI_ENDPOINT:?Set the full AI chat URL in .env}
+        VITE_SITE_ORIGIN: ${VITE_SITE_ORIGIN:-http://localhost:8080}
+    ports: ["8080:80"]
+    restart: unless-stopped

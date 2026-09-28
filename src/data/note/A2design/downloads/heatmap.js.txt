@@ -1,0 +1,215 @@
+// Public standalone export of desginer heatmap. Node.js 20+, CommonJS.
+// In a separate folder: npm init -y; npm install commander@14.0.3 sharp@0.34.5
+// Usage: node heatmap.js --help
+// Tune --threshold, --max-diff, --min-opacity and --max-opacity for your screenshots.
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// heatmap-download.js
+var import_commander = require("commander");
+
+// commands/heatmap.js
+var import_promises = require("fs/promises");
+var import_path = require("path");
+var import_sharp = __toESM(require("sharp"), 1);
+function buildHeatmapOptions(raw) {
+  const hasImagePair = Boolean(raw.design || raw.runtime);
+  if (hasImagePair && (!raw.design || !raw.runtime)) {
+    throw new Error("--design and --runtime must be provided together");
+  }
+  if (!hasImagePair && !raw.regionsDir) {
+    throw new Error("Provide --design and --runtime, or --regions-dir");
+  }
+  if (raw.region && !hasImagePair) {
+    throw new Error("--region requires --design and --runtime");
+  }
+  if (raw.region && !raw.output) {
+    throw new Error("--region requires --output");
+  }
+  return {
+    designImagePath: raw.design ? (0, import_path.resolve)(raw.design) : void 0,
+    runtimeImagePath: raw.runtime ? (0, import_path.resolve)(raw.runtime) : void 0,
+    output: raw.output,
+    region: raw.region ? (0, import_path.resolve)(raw.region) : void 0,
+    regionsDir: raw.regionsDir ? (0, import_path.resolve)(raw.regionsDir) : void 0,
+    threshold: raw.threshold != null ? parseNumber(raw.threshold, "--threshold") : 3,
+    maxDiff: raw.maxDiff != null ? parsePositiveNumber(raw.maxDiff, "--max-diff") : 32,
+    minOpacity: raw.minOpacity != null ? parseUnitNumber(raw.minOpacity, "--min-opacity") : 0.2,
+    maxOpacity: raw.maxOpacity != null ? parseUnitNumber(raw.maxOpacity, "--max-opacity") : 0.75
+  };
+}
+async function heatmap(raw) {
+  const opts = buildHeatmapOptions(raw);
+  const outputs = [];
+  let output;
+  let bytes;
+  if (opts.designImagePath && opts.runtimeImagePath) {
+    const image = await renderHeatmap(opts.designImagePath, opts.runtimeImagePath, opts);
+    const finalImage = opts.region ? await cropHeatmap(image, opts.region) : image;
+    output = opts.output ?? `heatmap-${Date.now()}.png`;
+    await writeOutputFile(output, finalImage);
+    bytes = finalImage.length;
+  }
+  if (opts.regionsDir) {
+    outputs.push(...await writeRegionHeatmaps(opts.regionsDir, opts));
+  }
+  console.log(JSON.stringify({
+    output,
+    bytes,
+    regionsDir: opts.regionsDir,
+    generatedRegions: outputs.length,
+    regions: outputs
+  }));
+}
+async function renderHeatmap(designImagePath, runtimeImagePath, opts = {
+  threshold: 3,
+  maxDiff: 32,
+  minOpacity: 0.2,
+  maxOpacity: 0.75
+}) {
+  const design = await loadImage(designImagePath);
+  const runtime = await loadImage(runtimeImagePath);
+  if (design.width !== runtime.width || design.height !== runtime.height) {
+    throw new Error(`Image sizes differ: design ${design.width}x${design.height}, runtime ${runtime.width}x${runtime.height}`);
+  }
+  const out = Buffer.from(design.data);
+  const total = design.width * design.height;
+  const opacityRange = Math.max(0, opts.maxOpacity - opts.minOpacity);
+  for (let pixel = 0, offset = 0; pixel < total; pixel++, offset += 4) {
+    const diff = Math.max(Math.abs(design.data[offset] - runtime.data[offset]), Math.abs(design.data[offset + 1] - runtime.data[offset + 1]), Math.abs(design.data[offset + 2] - runtime.data[offset + 2]));
+    if (diff < opts.threshold)
+      continue;
+    const strength = Math.min(1, diff / opts.maxDiff);
+    const alpha = opts.minOpacity + opacityRange * strength;
+    out[offset] = blendChannel(design.data[offset], 255, alpha);
+    out[offset + 1] = blendChannel(design.data[offset + 1], 0, alpha);
+    out[offset + 2] = blendChannel(design.data[offset + 2], 0, alpha);
+    out[offset + 3] = 255;
+  }
+  return (0, import_sharp.default)(out, {
+    raw: {
+      width: design.width,
+      height: design.height,
+      channels: 4
+    }
+  }).png().toBuffer();
+}
+async function writeRegionHeatmaps(root, opts) {
+  const dirs = await findImagePairDirs(root);
+  const outputs = [];
+  for (const dir of dirs) {
+    const output = (0, import_path.join)(dir, "heatmap.png");
+    const image = await renderHeatmap((0, import_path.join)(dir, "design.png"), (0, import_path.join)(dir, "runtime.png"), opts);
+    await writeOutputFile(output, image);
+    outputs.push({ dir, output, bytes: image.length });
+  }
+  return outputs;
+}
+async function cropHeatmap(image, regionPath) {
+  const region = await readRegion(regionPath);
+  return (0, import_sharp.default)(image).extract({
+    left: region.x,
+    top: region.y,
+    width: region.width,
+    height: region.height
+  }).png().toBuffer();
+}
+async function readRegion(regionPath) {
+  const raw = JSON.parse(await (0, import_promises.readFile)(regionPath, "utf8"));
+  const x = toInteger(raw.x, "region.x");
+  const y = toInteger(raw.y, "region.y");
+  const width = toInteger(raw.width, "region.width");
+  const height = toInteger(raw.height, "region.height");
+  if (width <= 0 || height <= 0)
+    throw new Error(`Invalid region size: ${width}x${height}`);
+  return { x, y, width, height };
+}
+async function loadImage(input) {
+  const { data, info } = await (0, import_sharp.default)(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return {
+    data,
+    width: info.width,
+    height: info.height
+  };
+}
+async function findImagePairDirs(root) {
+  const dirs = [];
+  async function walk(dir) {
+    const entries = await (0, import_promises.readdir)(dir, { withFileTypes: true });
+    const names = new Set(entries.map((entry) => entry.name.toLowerCase()));
+    if (names.has("design.png") && names.has("runtime.png")) {
+      dirs.push(dir);
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory())
+        continue;
+      await walk((0, import_path.join)(dir, entry.name));
+    }
+  }
+  const rootStat = await (0, import_promises.stat)(root);
+  if (!rootStat.isDirectory())
+    throw new Error(`--regions-dir must be a directory: ${root}`);
+  await walk(root);
+  return dirs.sort();
+}
+async function writeOutputFile(filePath, data) {
+  await (0, import_promises.mkdir)((0, import_path.dirname)((0, import_path.resolve)(filePath)), { recursive: true }).catch(() => {
+  });
+  await (0, import_promises.writeFile)(filePath, data);
+}
+function blendChannel(base, overlay, alpha) {
+  return Math.round(base * (1 - alpha) + overlay * alpha);
+}
+function toInteger(value, label) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n < 0)
+    throw new Error(`${label} must be a non-negative number`);
+  return n;
+}
+function parseNumber(value, flag) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0)
+    throw new Error(`${flag} must be a non-negative number`);
+  return n;
+}
+function parsePositiveNumber(value, flag) {
+  const n = parseNumber(value, flag);
+  if (n <= 0)
+    throw new Error(`${flag} must be greater than 0`);
+  return n;
+}
+function parseUnitNumber(value, flag) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 1)
+    throw new Error(`${flag} must be a number between 0 and 1`);
+  return n;
+}
+
+// heatmap-download.js
+var program = new import_commander.Command();
+program.name("heatmap.js").description("Render a pixel-difference heatmap over the design image.").option("--design <path>", "Path to design screenshot (PNG/JPG)").option("--runtime <path>", "Path to runtime screenshot (PNG/JPG)").option("--output <path>", "Write heatmap PNG to file; default heatmap-<timestamp>.png").option("--region <path>", "Crop output by region.json coordinates; requires --design, --runtime, and --output").option("--regions-dir <dir>", "Recursively write heatmap.png for every directory containing design.png and runtime.png").option("--threshold <n>", "Minimum channel difference before marking a pixel", "3").option("--max-diff <n>", "Difference value that maps to maximum heat opacity", "32").option("--min-opacity <0-1>", "Heat opacity for the smallest marked difference", "0.2").option("--max-opacity <0-1>", "Heat opacity for strongest differences", "0.75").action(heatmap);
+program.parseAsync().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
